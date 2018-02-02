@@ -1,0 +1,6 @@
+.idea/
+gen/
+libs-sources/
+libs/
+target/
+src/main/resources/client_secrets.json
