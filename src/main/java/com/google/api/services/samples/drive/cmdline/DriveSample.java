@@ -66,7 +66,7 @@ public class DriveSample {
      * Be sure to specify the name of your application. If the application name is {@code null} or
      * blank, the application will log a warning. Suggested format is "MyCompany-ProductName/1.0".
      */
-    private static final String APPLICATION_NAME = "";
+    private static final String APPLICATION_NAME = "JuanLiPuma-DriveClient/1.0";
 
     private static final String UPLOAD_FILE_PATH = "D:\\Users\\juan_\\Desktop\\test.txt";
     private static final String DIR_FOR_DOWNLOADS = "D:\\Users\\juan_\\Desktop\\drive-downloads";
@@ -139,6 +139,14 @@ public class DriveSample {
             // set up the global Drive instance
             drive = new Drive.Builder(httpTransport, JSON_FACTORY, credential).setApplicationName(
                     APPLICATION_NAME).build();
+
+            /* *********************************************************************************************************
+             *                                  SYNC LOCAL AND REMOTE FILE FILESYSTEMS
+             * ********************************************************************************************************/
+//            new FilesystemMapper(Paths.get("."), drive, Paths.get("remote_structure.json")).crawlRemote();
+//            System.out.println(drive.files().list().setFields("*").setQ("mimeType=application/vnd.google-apps.folder").execute());
+//            System.out.println(drive.files().create(new File().setName("hola.txt").setMimeType("text/plain").setParents(Collections.singletonList("root"))).setFields("id, parents").execute());
+//            drive.files().list().setQ("'root' in parents and mimeType = 'application/vnd.google-apps.folder'").execute();
 
             /* *********************************************************************************************************
              *                                  PERIODICALLY CHECK FOR REMOTE CHANGES
