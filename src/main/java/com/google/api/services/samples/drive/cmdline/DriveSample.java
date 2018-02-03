@@ -106,7 +106,7 @@ public class DriveSample {
     private static Credential authorize() throws Exception {
         // load client secrets
         GoogleClientSecrets clientSecrets = GoogleClientSecrets.load(JSON_FACTORY,
-                new InputStreamReader(DriveSample.class.getResourceAsStream("/client_secrets.json")));
+                new InputStreamReader(DriveSample.class.getResourceAsStream("/client_secret.json")));
         if (clientSecrets.getDetails().getClientId().startsWith("Enter")
                 || clientSecrets.getDetails().getClientSecret().startsWith("Enter ")) {
             System.out.println(
@@ -146,7 +146,7 @@ public class DriveSample {
 //            new FilesystemMapper(Paths.get("."), drive, Paths.get("remote_structure.json")).crawlRemote();
 //            System.out.println(drive.files().list().setFields("*").setQ("mimeType=application/vnd.google-apps.folder").execute());
 //            System.out.println(drive.files().create(new File().setName("hola.txt").setMimeType("text/plain").setParents(Collections.singletonList("root"))).setFields("id, parents").execute());
-//            drive.files().list().setQ("'root' in parents and mimeType = 'application/vnd.google-apps.folder'").execute();
+            System.out.println(drive.files().list().setQ("'root' in parents and mimeType = 'application/vnd.google-apps.folder'").execute());
 
             /* *********************************************************************************************************
              *                                  PERIODICALLY CHECK FOR REMOTE CHANGES

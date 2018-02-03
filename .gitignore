@@ -1,7 +1,8 @@
 .idea/
 *.iml
-gen/
-libs-sources/
-libs/
-target/
-src/main/resources/client_secrets.json
+.gradle/
+build/
+out/
+gradle/wrapper/gradle-wrapper.properties
+
+src/main/resources/client_secret.json
