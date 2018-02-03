@@ -15,6 +15,7 @@
 package com.google.api.services.samples.drive.cmdline;
 
 import client.LocalDirectoryWatcher;
+import client.upload.FileCreator;
 import com.google.api.client.auth.oauth2.Credential;
 import com.google.api.client.extensions.java6.auth.oauth2.AuthorizationCodeInstalledApp;
 import com.google.api.client.extensions.jetty.auth.oauth2.LocalServerReceiver;
@@ -133,7 +134,15 @@ public class DriveSample {
                     APPLICATION_NAME).build();
 
             // Watch directory
-            Thread watcherThread = new Thread(new LocalDirectoryWatcher(ROOT));
+            LocalDirectoryWatcher watcher = new LocalDirectoryWatcher(ROOT);
+            watcher.setCreatedListener(changedFile -> {
+                try {
+                    new FileCreator(drive, changedFile).call();
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+            });
+            Thread watcherThread = new Thread(watcher);
             watcherThread.start();
             watcherThread.join();   // Wait for watcher to finish (ie. run forever)
 

@@ -2,15 +2,16 @@ package client;
 
 import java.io.IOException;
 import java.nio.file.*;
-import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 public class LocalDirectoryWatcher implements Runnable {
     private static final FileChangeListener defaultFileCreatedListener = changedFile -> System.out.format("%s created\n", changedFile.getFileName());
     private static final FileChangeListener defaultFileModifiedListener = changedFile -> System.out.format("%s changed\n", changedFile.getFileName());
-    private static final FileChangeListener defaultFileDeletedistener = changedFile -> System.out.format("%s deleted\n", changedFile.getFileName());
+    private static final FileChangeListener defaultFileDeletedListener = changedFile -> System.out.format("%s deleted\n", changedFile.getFileName());
 
+    private final Path ROOT;
     private final WatchService watcher;
-    private FileChangeListener createdListener = defaultFileCreatedListener, modifiedListener = defaultFileModifiedListener, deletedListener = defaultFileDeletedistener;
+    private FileChangeListener createdListener = defaultFileCreatedListener, modifiedListener = defaultFileModifiedListener, deletedListener = defaultFileDeletedListener;
 
     public LocalDirectoryWatcher(Path directoryRoot, boolean recursive) throws IOException {
         if (!Files.isDirectory(directoryRoot)) {
@@ -20,9 +21,10 @@ public class LocalDirectoryWatcher implements Runnable {
             // TODO
             throw new UnsupportedOperationException("Not implemented yet, sorry");
         }
-        this.watcher = directoryRoot.getFileSystem().newWatchService();
+        this.ROOT = directoryRoot;
+        this.watcher = ROOT.getFileSystem().newWatchService();
         // Watch for add, delete and modify
-        directoryRoot.register(watcher, StandardWatchEventKinds.ENTRY_CREATE, StandardWatchEventKinds.ENTRY_DELETE, StandardWatchEventKinds.ENTRY_MODIFY);
+        ROOT.register(watcher, StandardWatchEventKinds.ENTRY_CREATE, StandardWatchEventKinds.ENTRY_DELETE, StandardWatchEventKinds.ENTRY_MODIFY);
     }
 
     public LocalDirectoryWatcher(Path directoryRoot) throws IOException {
@@ -47,15 +49,22 @@ public class LocalDirectoryWatcher implements Runnable {
         while (watching) {
             WatchKey watchKey;
             try {
-                watchKey = watcher.take();                      //This is blocking, also see #poll() and #poll(long, TimeUnit)
+                watchKey = watcher.poll(1, TimeUnit.SECONDS);                      //This is blocking, also see #poll() and #poll(long, TimeUnit)
+                if (watchKey == null) {
+                    // Tick; want to do anything here?
+                    continue;
+                }
+                if (!watchKey.isValid()) {
+                    System.out.println("Invalid watch key, skipping");
+                    continue;
+                }
             } catch (InterruptedException e) {
                 System.out.println("Interrupted, will stop watching.");
                 watching = false;
                 continue;
             }
-            List<WatchEvent<?>> events = watchKey.pollEvents(); // Blocking
-            for (WatchEvent event : events) {
-                Path target = ((Path) event.context());
+            for (WatchEvent event : watchKey.pollEvents()) {
+                Path target = Paths.get(ROOT.toString(), event.context().toString()).toAbsolutePath();
                 if (event.kind() == StandardWatchEventKinds.ENTRY_CREATE) {
                     createdListener.onChange(target);
                 } else if (event.kind() == StandardWatchEventKinds.ENTRY_DELETE) {
