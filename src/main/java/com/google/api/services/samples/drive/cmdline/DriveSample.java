@@ -15,6 +15,7 @@
 package com.google.api.services.samples.drive.cmdline;
 
 import client.LocalDirectoryWatcher;
+import client.download.ChangesTracker;
 import client.upload.FileCreator;
 import com.google.api.client.auth.oauth2.Credential;
 import com.google.api.client.extensions.java6.auth.oauth2.AuthorizationCodeInstalledApp;
@@ -40,8 +41,11 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
-import java.nio.file.*;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.Collections;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 
 /**
  * A sample application that runs multiple requests against the Drive API. The requests this sample
@@ -125,6 +129,9 @@ public class DriveSample {
                 "Please enter the upload file path and download directory in %s", DriveSample.class);
 
         try {
+            /* *********************************************************************************************************
+             *                                          SETUP, AUTHENTICATE
+             * ********************************************************************************************************/
             httpTransport = GoogleNetHttpTransport.newTrustedTransport();
             dataStoreFactory = new FileDataStoreFactory(DATA_STORE_DIR);
             // authorization
@@ -133,11 +140,26 @@ public class DriveSample {
             drive = new Drive.Builder(httpTransport, JSON_FACTORY, credential).setApplicationName(
                     APPLICATION_NAME).build();
 
-            // Watch directory
+            /* *********************************************************************************************************
+             *                                  PERIODICALLY CHECK FOR REMOTE CHANGES
+             * ********************************************************************************************************/
+            ChangesTracker changesTracker = new ChangesTracker(drive);
+            new ScheduledThreadPoolExecutor(1).scheduleWithFixedDelay(() -> {
+                try {
+                    ChangesTracker.defaultChangeConsumer.accept(changesTracker.call());
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+            }, 0, 1, TimeUnit.MINUTES);
+
+            /* *********************************************************************************************************
+             *                                  WATCH AND UPLOAD LOCAL CHANGES
+             * ********************************************************************************************************/
             LocalDirectoryWatcher watcher = new LocalDirectoryWatcher(ROOT);
             watcher.setCreatedListener(changedFile -> {
                 try {
-                    new FileCreator(drive, changedFile).call();
+                    File createdFile = new FileCreator(drive, changedFile).call();
+                    System.out.format("Successfully created file %s", createdFile.getId());
                 } catch (Exception e) {
                     e.printStackTrace();
                 }

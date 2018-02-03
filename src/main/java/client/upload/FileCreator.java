@@ -39,7 +39,7 @@ public class FileCreator implements Callable<File> {
 
         // TODO see upload files in corresponding Drive folder; see https://developers.google.com/drive/v3/web/folder
         FileContent mediaContent = new FileContent(Files.probeContentType(file), file.toFile());
-        Drive.Files.Create insert = drive.files().create(fileMetadata, mediaContent);
+        Drive.Files.Create insert = drive.files().create(fileMetadata, mediaContent).setFields("id");   // Return file ID when creating
         MediaHttpUploader uploader = insert.getMediaHttpUploader();
         uploader.setDirectUploadEnabled(Files.size(file) <= 5e+6);  // Use resumable upload for files > 5MB
         uploader.setProgressListener(progressListener);
