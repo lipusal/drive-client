@@ -1,5 +1,8 @@
 package client;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.io.IOException;
 import java.nio.file.*;
 import java.util.concurrent.TimeUnit;
@@ -12,6 +15,7 @@ public class LocalDirectoryWatcher implements Runnable {
     private final Path ROOT;
     private final WatchService watcher;
     private FileChangeListener createdListener = defaultFileCreatedListener, modifiedListener = defaultFileModifiedListener, deletedListener = defaultFileDeletedListener;
+    private final Logger logger = LoggerFactory.getLogger(LocalDirectoryWatcher.class);
 
     public LocalDirectoryWatcher(Path directoryRoot, boolean recursive) throws IOException {
         if (!Files.isDirectory(directoryRoot)) {
@@ -55,11 +59,11 @@ public class LocalDirectoryWatcher implements Runnable {
                     continue;
                 }
                 if (!watchKey.isValid()) {
-                    System.out.println("Invalid watch key, skipping");
+                    logger.debug("Invalid watch key, skipping");
                     continue;
                 }
             } catch (InterruptedException e) {
-                System.out.println("Interrupted, will stop watching.");
+                logger.debug("Interrupted, will stop watching.");
                 watching = false;
                 continue;
             }

@@ -6,6 +6,8 @@ import com.google.api.services.drive.model.File;
 import com.google.api.services.drive.model.FileList;
 import com.google.gson.Gson;
 import com.google.gson.stream.JsonWriter;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.FileWriter;
 import java.io.IOException;
@@ -28,6 +30,7 @@ public class FilesystemMapper {
     private final Directory mapRoot;
     private final Path outputFile;
     private final Drive drive;
+    private final Logger logger = LoggerFactory.getLogger(FilesystemMapper.class);
 
     public FilesystemMapper(Path localRoot, Drive driveRemote, Path dictionaryOutputFile) {
         this.localRoot = localRoot;
@@ -46,8 +49,7 @@ public class FilesystemMapper {
                     // TODO take advantage of this remote request, register it in the map (though it would be weird to have all folder IDs without having them mapped already...)
                     return new Directory(new RemoteExplorer(drive).findById(subdirId.getFileName().toString()));
                 } catch (IOException e) {
-                    System.err.printf("Couldn't map remote path '%s' to local, specifically in the '%s' part: %s", remotePath, subdirId, e.getMessage());
-                    e.printStackTrace();
+                    logger.error("Couldn't map remote path '{}' to local, specifically in the '{}' part: {}", remotePath, subdirId, e.getStackTrace());
                     System.exit(1);
                 }
                 return null;
@@ -63,7 +65,7 @@ public class FilesystemMapper {
      * @param namedPath         Named path, eg. "a/b/c"
      * @return                  The corresponding remote path, eg. "id-1/id-2/id-3"
      * @throws NoSuchElementException   When the specified path does not exist in the remote
-     * @throws IOException              See {@link AbstractGoogleClientRequest#execute()}
+     * @throws IOException              See {@link com.google.api.client.googleapis.services.AbstractGoogleClientRequest#execute()}
      */
     public Path mapToIds(Path namedPath) throws IOException {
         Directory currentRemoteDir = mapRoot;
@@ -112,8 +114,7 @@ public class FilesystemMapper {
                     Thread.sleep(100 * 5);  // Drive API limit is 1000req/100 sec, or 10req/sec. Add some delay to prevent going over limit.
                     getSubfoldersRecursive(subdir, drive, threadPool);
                 } catch (Exception e) {
-                    System.err.format("Couldn't get subdirectories of %s (%s)", directory.getName(), directory.getId());
-                    e.printStackTrace();
+                    logger.error("Couldn't get subdirectories of {} ({}): {}", directory.getName(), directory.getId(), e.getStackTrace());
                 }
             });
         }
@@ -136,6 +137,7 @@ public class FilesystemMapper {
     private static final class SubdirLister implements Callable<List<File>> {
         private final Directory directory;
         private final Drive drive;
+        private final Logger logger = LoggerFactory.getLogger(SubdirLister.class);
 
         SubdirLister(Directory dir, Drive drive) {
             Objects.requireNonNull(dir, "Directory may not be null");
@@ -161,7 +163,7 @@ public class FilesystemMapper {
                 }
                 FileList response = request.execute();
                 if (response.getIncompleteSearch()) {
-                    System.err.println("WARNING: Searching subfolders of folder with ID" + directory.getId() + " yielded an incomplete search.");
+                    logger.warn("WARNING: Searching subfolders of folder with ID {} yielded an incomplete search.", directory.getId());
                 }
                 result.addAll(response.getFiles());
                 nextPageToken = response.getNextPageToken();

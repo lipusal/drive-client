@@ -14,6 +14,8 @@ import com.google.api.client.util.store.FileDataStoreFactory;
 import com.google.api.services.drive.Drive;
 import com.google.api.services.drive.DriveScopes;
 import com.google.api.services.drive.model.File;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -34,6 +36,11 @@ public class Main {
      * Root of locally-synchronized files
      */
     private static final Path ROOT = Paths.get("D:\\Users\\juan_\\Desktop\\drive-test-root");
+
+    /**
+     * Logger
+     */
+    private static final Logger logger = LoggerFactory.getLogger(Main.class);
 
     /**
      * Directory to store user credentials for this application.
@@ -98,8 +105,7 @@ public class Main {
                         .build();
         Credential credential = new AuthorizationCodeInstalledApp(
                 flow, new LocalServerReceiver()).authorize("user");
-        System.out.println(
-                "Credentials saved to " + DATA_STORE_DIR.getAbsolutePath());
+        logger.debug("Credentials saved to {}", DATA_STORE_DIR.getAbsolutePath());
         return credential;
     }
 
@@ -118,6 +124,8 @@ public class Main {
     }
 
     public static void main(String[] args) throws IOException, InterruptedException {
+        logger.debug("Starting up...");
+
         // Build a new authorized API client service.
         Drive driveService = getDriveService();
 
@@ -139,7 +147,7 @@ public class Main {
         watcher.setCreatedListener(changedFile -> {
             try {
                 File createdFile = new FileCreator(driveService, changedFile).call();
-                System.out.format("Successfully created file %s", createdFile.getId());
+                logger.info("Successfully created file {}", createdFile.getId());
             } catch (Exception e) {
                 e.printStackTrace();
             }
