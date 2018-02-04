@@ -23,7 +23,7 @@ import java.nio.file.Paths;
 import java.util.Collections;
 import java.util.List;
 
-public class Quickstart {
+public class Main {
     /**
      * Application name.
      */
@@ -85,7 +85,7 @@ public class Quickstart {
     public static Credential authorize() throws IOException {
         // Load client secrets.
         InputStream in =
-                Quickstart.class.getResourceAsStream("/client_secret.json");
+                Main.class.getResourceAsStream("/client_secret.json");
         GoogleClientSecrets clientSecrets =
                 GoogleClientSecrets.load(JSON_FACTORY, new InputStreamReader(in));
 
