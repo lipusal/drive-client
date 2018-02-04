@@ -1,13 +1,13 @@
 package client;
 
+import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.List;
 
 public class Directory {
     private String id;
     private String name;
-    private List<Directory> subdirs = Collections.emptyList();
+    private List<Directory> subdirs = new ArrayList<>();
 
     public Directory(String id, String name, Directory... subdirs) {
         this.id = id;
@@ -33,5 +33,10 @@ public class Directory {
 
     public List<Directory> getSubdirs() {
         return subdirs;
+    }
+
+    @Override
+    public String toString() {
+        return name + " (" + id + ")";
     }
 }

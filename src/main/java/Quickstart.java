@@ -1,5 +1,5 @@
+import client.FilesystemMapper;
 import client.LocalDirectoryWatcher;
-import client.download.ChangesTracker;
 import client.upload.FileCreator;
 import com.google.api.client.auth.oauth2.Credential;
 import com.google.api.client.extensions.java6.auth.oauth2.AuthorizationCodeInstalledApp;
@@ -14,7 +14,6 @@ import com.google.api.client.util.store.FileDataStoreFactory;
 import com.google.api.services.drive.Drive;
 import com.google.api.services.drive.DriveScopes;
 import com.google.api.services.drive.model.File;
-import com.google.api.services.drive.model.FileList;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -23,8 +22,6 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Collections;
 import java.util.List;
-import java.util.concurrent.ScheduledThreadPoolExecutor;
-import java.util.concurrent.TimeUnit;
 
 public class Quickstart {
     /**
@@ -127,33 +124,11 @@ public class Quickstart {
         /* *********************************************************************************************************
          *                                  SYNC LOCAL AND REMOTE FILE FILESYSTEMS
          * ********************************************************************************************************/
-//            new FilesystemMapper(Paths.get("."), drive, Paths.get("remote_structure.json")).crawlRemote();
-//            System.out.println(drive.files().list().setFields("*").setQ("mimeType=application/vnd.google-apps.folder").execute());
-//            System.out.println(drive.files().create(new File().setName("hola.txt").setMimeType("text/plain").setParents(Collections.singletonList("root"))).setFields("id, parents").execute());
-        FileList rootDirs = driveService.files().list()
-                .setQ("'root' in parents and mimeType = 'application/vnd.google-apps.folder'")
-                .execute();
-
-        if (rootDirs == null || rootDirs.size() == 0) {
-            System.out.println("No files found on root.");
-        } else {
-            System.out.println("Root files: ");
-            rootDirs.getFiles().forEach(file ->
-                    System.out.printf("%s (%s)\n", file.getName(), file.getId())
-            );
+        try {
+            new FilesystemMapper(ROOT, driveService, Paths.get("remote_structure.json")).crawlRemote();
+        } catch (Exception e) {
+            e.printStackTrace();
         }
-
-        /* *********************************************************************************************************
-         *                                  PERIODICALLY CHECK FOR REMOTE CHANGES
-         * ********************************************************************************************************/
-        ChangesTracker changesTracker = new ChangesTracker(driveService);
-        new ScheduledThreadPoolExecutor(1).scheduleWithFixedDelay(() -> {
-            try {
-                ChangesTracker.defaultChangeConsumer.accept(changesTracker.call());
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
-        }, 0, 1, TimeUnit.MINUTES);
 
         /* *********************************************************************************************************
          *                                  WATCH AND UPLOAD LOCAL CHANGES
