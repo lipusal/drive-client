@@ -121,6 +121,8 @@ public class Quickstart {
         // Build a new authorized API client service.
         Drive driveService = getDriveService();
 
+        System.out.println(new FilesystemMapper(ROOT, driveService, Paths.get("remote_structure.json")).mapToIds(Paths.get("ITBA", "4to Año", "2do Cuatri")));
+
         /* *********************************************************************************************************
          *                                  SYNC LOCAL AND REMOTE FILE FILESYSTEMS
          * ********************************************************************************************************/

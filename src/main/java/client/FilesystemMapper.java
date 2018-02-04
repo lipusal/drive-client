@@ -1,5 +1,6 @@
 package client;
 
+import client.download.RemoteExplorer;
 import com.google.api.services.drive.Drive;
 import com.google.api.services.drive.model.File;
 import com.google.api.services.drive.model.FileList;
@@ -7,9 +8,12 @@ import com.google.gson.Gson;
 import com.google.gson.stream.JsonWriter;
 
 import java.io.FileWriter;
+import java.io.IOException;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.NoSuchElementException;
 import java.util.Objects;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
@@ -17,18 +21,60 @@ import java.util.concurrent.ExecutorService;
 
 /**
  * Folders in Drive are exclusively identified with IDs, and every folder's parents are merely another property of the
- * folder. This class constructs a tree-like structure to map remote folder IDs to local folders, in order to be tell
- * whether a folder should be ignored or not.
+ * folder. This class constructs a tree-like structure to map remote folder IDs to local folders.
  */
 public class FilesystemMapper {
-    private final Path ROOT;
+    private final Path localRoot;
+    private final Directory mapRoot;
     private final Path outputFile;
     private final Drive drive;
 
     public FilesystemMapper(Path localRoot, Drive driveRemote, Path dictionaryOutputFile) {
-        this.ROOT = localRoot;
+        this.localRoot = localRoot;
+        this.mapRoot = new Directory("root", "ROOT");
         this.drive = driveRemote;
         this.outputFile = dictionaryOutputFile;
+    }
+
+    public Path mapToLocal(Path remotePath) {
+        // Walk through map, fetching any missing paths in the middle
+        Directory remoteDir = mapRoot;
+        List<String> localDirs = new ArrayList<>(); // Does NOT include root name intentionally
+        for(Path subdirId : remotePath) {
+            Directory nextDir = remoteDir.getSubdirById(subdirId.getFileName().toString()).orElseGet(() -> {
+                try {
+                    // TODO take advantage of this remote request, register it in the map (though it would be weird to have all folder IDs without having them mapped already...)
+                    return new Directory(new RemoteExplorer(drive).findById(subdirId.getFileName().toString()));
+                } catch (IOException e) {
+                    System.err.printf("Couldn't map remote path '%s' to local, specifically in the '%s' part: %s", remotePath, subdirId, e.getMessage());
+                    e.printStackTrace();
+                    System.exit(1);
+                }
+                return null;
+            });
+            localDirs.add(remoteDir.getName());
+        }
+        return Paths.get(mapRoot.getName(), localDirs.toArray(new String[0]));
+    }
+
+    /**
+     * Map a path of directory names (can be local or remote) to remote directory IDs.
+     *
+     * @param namedPath         Named path, eg. "a/b/c"
+     * @return                  The corresponding remote path, eg. "id-1/id-2/id-3"
+     * @throws NoSuchElementException   When the specified path does not exist in the remote
+     * @throws IOException              See {@link AbstractGoogleClientRequest#execute()}
+     */
+    public Path mapToIds(Path namedPath) throws IOException {
+        Directory currentRemoteDir = mapRoot;
+        List<String> pathSections = new ArrayList<>();
+        for(Path localSubdir : namedPath) {
+            String localSubdirName = localSubdir.getFileName().toString();
+            File remoteDir = new RemoteExplorer(drive).findFoldersByName(localSubdirName, currentRemoteDir.getId()).stream().findFirst().orElseThrow(NoSuchElementException::new);
+            pathSections.add(remoteDir.getId());
+            currentRemoteDir = new Directory(remoteDir);
+        }
+        return Paths.get("root", pathSections.toArray(new String[0]));
     }
 
     public void crawlRemote() throws Exception {
