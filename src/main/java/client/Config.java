@@ -3,10 +3,7 @@ package client;
 import client.download.RemoteExplorer;
 import com.google.api.services.drive.Drive;
 import com.google.api.services.drive.model.File;
-import com.google.gson.Gson;
-import com.google.gson.JsonArray;
-import com.google.gson.JsonObject;
-import com.google.gson.JsonPrimitive;
+import com.google.gson.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -20,6 +17,7 @@ import java.util.List;
 import java.util.Scanner;
 
 public class Config {
+    private String REMOTE_ROOT_ID;      // TODO: Move this to FilesystemMapper?
     private static Config instance;
 
     private JsonObject configuration;
@@ -65,6 +63,17 @@ public class Config {
         System.out.println("\n*************************************************\n");
         System.out.println("Welcome to the configuration. Let's start by setting which folders you want to synchronize");
 
+        // Get remote root folder ID, necessary for some computations
+        if (REMOTE_ROOT_ID == null) {
+            try {
+                REMOTE_ROOT_ID = new RemoteExplorer(driveService).findById("root").getId();
+            } catch (IOException e) {
+                System.err.println("Couldn't fetch necessary information. Exiting.");
+                logger.error("Couldn't get ID of remote root, can't continue", e);
+                System.exit(1);
+            }
+        }
+        // Configure
         setSyncedRemoteFolders(driveService);
 
         System.out.println("Configuration complete!");
@@ -76,9 +85,9 @@ public class Config {
 
         List<File> rootDirs = null;
         try {
-            rootDirs = new RemoteExplorer(driveService).getSubdirs("root");
+            rootDirs = new RemoteExplorer(driveService).getSubdirs(REMOTE_ROOT_ID);
         } catch (IOException e) {
-            System.err.println("Couldn't get your remote folders: " + e.getMessage() + ". Exiting.");
+            System.err.println("Couldn't get your Drive folders: " + e.getMessage() + ". Exiting.");
             logger.error("Couldn't get remote folders in configuration", e);
             System.exit(1);
         }
@@ -147,6 +156,16 @@ public class Config {
             logger.error("Couldn't save synced directories", e);
             System.exit(1);
         }
+
+        // Update maps file
+        logger.debug("Updating maps file");
+        try {
+            buildMap(selectedDirs, Paths.get(configuration.get("mapsFile").getAsString()));
+        } catch (IOException e) {
+            System.err.println("Couldn't save configuration, exiting.");
+            logger.error("Couldn't update maps file", e);
+            System.exit(1);
+        }
     }
 
     public JsonObject getConfig() {
@@ -166,5 +185,55 @@ public class Config {
         return result;
     }
 
-    // TODO NOW: Export map to file on config
+    /**
+     * Build a map, compatible with {@link FilesystemMapper}, based on directories selected in {@link #configureRemote(Drive)}.
+     *
+     * @param dirs          The directories to build a map for.
+     * @param outputFile    Where to output the file
+     * @throws IOException  See {@link Gson#toJson(JsonElement, Appendable)}
+     */
+    private void buildMap(List<File> dirs, Path outputFile) throws IOException {
+        // TODO: Rather than overwriting maps file, merge it with already-existing one, if present
+        JsonObject result = new JsonObject();
+        result.add("root", new JsonPrimitive(REMOTE_ROOT_ID));
+        result.add(REMOTE_ROOT_ID, mapEntry("root", Paths.get("TODO"), true));
+        buildMapEntryRecursive(REMOTE_ROOT_ID, new ArrayList<>(dirs), result);
+
+        Writer w = new FileWriter(outputFile.toAbsolutePath().toFile());
+        new Gson().toJson(result, w);
+        w.close();
+    }
+
+    private void buildMapEntryRecursive(String currentParentId, List<File> dirs, JsonObject output) {
+        // Find all dirs with currentId as parents
+//        List<String> idsToRemove = new ArrayList<>(dirs.size());
+        // TODO: Use iterator() to go removing dirs as we visit them
+        dirs.stream()
+                .filter(file -> file.getParents().contains(currentParentId))
+                // Add them to resulting object
+                .forEach(file -> {
+                    output.add(file.getId(), mapEntry(file.getName(), null, true, currentParentId));
+//                    idsToRemove.add(file.getId());
+                    buildMapEntryRecursive(file.getId(), dirs, output);
+                });
+    }
+
+    /**
+     * Dynamically build a JsonObject with the shape of an entry as defined in the JSON declared in {@link FilesystemMapper#DEFAULT_MAPS_FILE}.
+     */
+    private JsonObject mapEntry(String remoteName, Path localPath, boolean sync, String... parents) {
+        JsonObject result = new JsonObject();
+        result.add("remoteName", remoteName == null ? JsonNull.INSTANCE : new JsonPrimitive(remoteName));
+        JsonArray parentsAry = new JsonArray(parents.length);
+        for(String parent : parents) {
+            parentsAry.add(parent);
+        }
+        result.add("parents", parentsAry);
+        result.add("localPath", localPath == null ? JsonNull.INSTANCE : new JsonPrimitive(localPath.toString()));
+        result.add("sync", new JsonPrimitive(sync));
+
+        return result;
+    }
+
+    // TODO: Add localRoot to config?
 }

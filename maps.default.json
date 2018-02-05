@@ -1,10 +1,9 @@
 {
-  "maps": {
-    "root": {
-      "remoteName": "root",
-      "parents": [],
-      "localPath": null,
-      "sync": false
-    }
+  "root": "<ROOT-ID>",
+  "<ROOT-ID>": {
+    "remoteName": "root",
+    "parents": [],
+    "localPath": null,
+    "sync": false
   }
 }

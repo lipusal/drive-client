@@ -43,7 +43,7 @@ public class FilesystemMapper {
         Objects.requireNonNull(driveRemote, "Drive service may not be null");
         Objects.requireNonNull(mapsFile, "Maps file may not be null");
 
-        this.localRoot = localRoot;
+        this.localRoot = localRoot.toAbsolutePath();
         this.driveService = driveRemote;
         this.mapsFile = Files.exists(mapsFile) ? mapsFile : DEFAULT_MAPS_FILE;
         if (this.mapsFile == DEFAULT_MAPS_FILE) {
@@ -195,10 +195,11 @@ public class FilesystemMapper {
     private Directory parseMapsFile(Path mapsFile) throws Exception {
         Objects.requireNonNull(mapsFile);
         JsonObject map = new Gson().fromJson(new FileReader(mapsFile.toFile()), JsonObject.class);
-        if (!map.has("root")) {
-            throw new Exception("Map in " + mapsFile + " does not include root directory");
+        if (!map.has("root") || !map.get("root").isJsonPrimitive()) {
+            throw new Exception("Map in " + mapsFile + " does not include a valid root directory ID");
         }
-        Directory result = new Directory("root", localRoot.getFileName().toString());
+        String remoteRootId = map.get("root").getAsString();
+        Directory result = new Directory(remoteRootId, "root");
         parseDirectoryRecursive(result, map);
         return result;
     }
@@ -213,6 +214,9 @@ public class FilesystemMapper {
         List<String> entriesToRemove = new ArrayList<>();
         // Find subdirs of current dir
         map.entrySet().stream().filter(entry -> {
+            if (!entry.getValue().isJsonObject()) {
+                return false;
+            }
             for (JsonElement parent : entry.getValue().getAsJsonObject().getAsJsonArray("parents")) {
                 if (parent.getAsString().equals(currentRoot.getId())) {
                     return true;
