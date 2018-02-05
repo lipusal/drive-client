@@ -30,26 +30,26 @@ import java.util.concurrent.ExecutorService;
  * folder. This class constructs a tree-like structure to map remote folder IDs to local folders.
  */
 public class FilesystemMapper {
-    private static final Path DEFAULT_MAPS_FILE = Paths.get("maps.default.json");
+    private static final Path DEFAULT_MAP_FILE = Paths.get("map.default.json");
 
     private final Path localRoot;
-    private final Path mapsFile;
+    private final Path mapFile;
     private final Directory mapRoot;
     private final Drive driveService;
     private final Logger logger = LoggerFactory.getLogger(FilesystemMapper.class);
 
-    public FilesystemMapper(Path localRoot, Drive driveRemote, Path mapsFile) throws Exception {
+    public FilesystemMapper(Path localRoot, Drive driveRemote, Path mapFile) throws Exception {
         Objects.requireNonNull(localRoot, "Local root may not be null");
         Objects.requireNonNull(driveRemote, "Drive service may not be null");
-        Objects.requireNonNull(mapsFile, "Maps file may not be null");
+        Objects.requireNonNull(mapFile, "Map file may not be null");
 
         this.localRoot = localRoot.toAbsolutePath();
         this.driveService = driveRemote;
-        this.mapsFile = Files.exists(mapsFile) ? mapsFile : DEFAULT_MAPS_FILE;
-        if (this.mapsFile == DEFAULT_MAPS_FILE) {
-            logger.warn("Maps file {} not found, falling back to default maps file {}", this.mapsFile, DEFAULT_MAPS_FILE);
+        this.mapFile = Files.exists(mapFile) ? mapFile : DEFAULT_MAP_FILE;
+        if (this.mapFile == DEFAULT_MAP_FILE) {
+            logger.warn("Map file {} not found, falling back to default map file {}", this.mapFile, DEFAULT_MAP_FILE);
         }
-        this.mapRoot = parseMapsFile(this.mapsFile);
+        this.mapRoot = parseMapFile(this.mapFile);
     }
 
     public Path mapToLocal(Path remotePath) {
@@ -107,7 +107,7 @@ public class FilesystemMapper {
 //        threadPool.awaitTermination(1, TimeUnit.MINUTES);   // TODO: Make sure this terminates properly, ie. THE ENTIRE remote filesystem has been crawled
 
 
-        FileWriter writer = new FileWriter(mapsFile.toFile());
+        FileWriter writer = new FileWriter(mapFile.toFile());
         new Gson().toJson(root, Directory.class, new JsonWriter(writer));
         writer.close();
     }
@@ -186,17 +186,17 @@ public class FilesystemMapper {
     }
 
     /**
-     * Parse a maps file, containing an JSON object with the structure of the object found in {@link #DEFAULT_MAPS_FILE},
+     * Parse a map file, containing an JSON object with the structure of the object found in {@link #DEFAULT_MAP_FILE},
      * into a {@link Directory} with its corresponding subdirectories.
      *
-     * @param mapsFile  The maps file from which to read data.
+     * @param mapFile  The map file from which to read data.
      * @return          The equivalent Directory.
      */
-    private Directory parseMapsFile(Path mapsFile) throws Exception {
-        Objects.requireNonNull(mapsFile);
-        JsonObject map = new Gson().fromJson(new FileReader(mapsFile.toFile()), JsonObject.class);
+    private Directory parseMapFile(Path mapFile) throws Exception {
+        Objects.requireNonNull(mapFile);
+        JsonObject map = new Gson().fromJson(new FileReader(mapFile.toFile()), JsonObject.class);
         if (!map.has("root") || !map.get("root").isJsonPrimitive()) {
-            throw new Exception("Map in " + mapsFile + " does not include a valid root directory ID");
+            throw new Exception("Map in " + mapFile + " does not include a valid root directory ID");
         }
         String remoteRootId = map.get("root").getAsString();
         Directory result = new Directory(remoteRootId, "root");

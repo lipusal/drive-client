@@ -155,7 +155,7 @@ public class Main {
          *                                  SYNC LOCAL AND REMOTE FILE FILESYSTEMS
          * ********************************************************************************************************/
         try {
-            FilesystemMapper mapper = new FilesystemMapper(ROOT, driveService, Paths.get(Config.getInstance().getConfig().get("mapsFile").getAsString()));
+            FilesystemMapper mapper = new FilesystemMapper(ROOT, driveService, Paths.get(Config.getInstance().getConfig().get("mapFile").getAsString()));
             System.out.println(mapper.getMapRoot().tree());
         } catch (Exception e) {
             e.printStackTrace();

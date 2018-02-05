@@ -157,13 +157,13 @@ public class Config {
             System.exit(1);
         }
 
-        // Update maps file
-        logger.debug("Updating maps file");
+        // Update map file
+        logger.debug("Updating map file");
         try {
-            buildMap(selectedDirs, Paths.get(configuration.get("mapsFile").getAsString()));
+            buildMap(selectedDirs, Paths.get(configuration.get("mapFile").getAsString()));
         } catch (IOException e) {
             System.err.println("Couldn't save configuration, exiting.");
-            logger.error("Couldn't update maps file", e);
+            logger.error("Couldn't update map file", e);
             System.exit(1);
         }
     }
@@ -193,7 +193,7 @@ public class Config {
      * @throws IOException  See {@link Gson#toJson(JsonElement, Appendable)}
      */
     private void buildMap(List<File> dirs, Path outputFile) throws IOException {
-        // TODO: Rather than overwriting maps file, merge it with already-existing one, if present
+        // TODO: Rather than overwriting map file, merge it with already-existing one, if present
         JsonObject result = new JsonObject();
         result.add("root", new JsonPrimitive(REMOTE_ROOT_ID));
         result.add(REMOTE_ROOT_ID, mapEntry("root", Paths.get("TODO"), true));
@@ -219,7 +219,7 @@ public class Config {
     }
 
     /**
-     * Dynamically build a JsonObject with the shape of an entry as defined in the JSON declared in {@link FilesystemMapper#DEFAULT_MAPS_FILE}.
+     * Dynamically build a JsonObject with the shape of an entry as defined in the JSON declared in {@link FilesystemMapper#DEFAULT_MAP_FILE}.
      */
     private JsonObject mapEntry(String remoteName, Path localPath, boolean sync, String... parents) {
         JsonObject result = new JsonObject();

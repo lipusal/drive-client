@@ -1,5 +1,5 @@
 {
-  "mapsFile": "maps.json",
+  "mapFile": "map.json",
   "sync": null,
   "ignore": [
     ".git/.*"
