@@ -151,13 +151,12 @@ public class Main {
             System.out.println("Skipping configuration");
         }
 
-        System.out.println(new FilesystemMapper(ROOT, driveService, Paths.get("remote_structure.json")).mapToIds(Paths.get("ITBA", "4to Año", "2do Cuatri")));
-
         /* *********************************************************************************************************
          *                                  SYNC LOCAL AND REMOTE FILE FILESYSTEMS
          * ********************************************************************************************************/
         try {
-            new FilesystemMapper(ROOT, driveService, Paths.get("remote_structure.json")).crawlRemote();
+            FilesystemMapper mapper = new FilesystemMapper(ROOT, driveService, Paths.get(Config.getInstance().getConfig().get("mapsFile").getAsString()));
+            System.out.println(mapper.getMapRoot().tree());
         } catch (Exception e) {
             e.printStackTrace();
         }

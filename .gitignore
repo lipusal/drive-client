@@ -9,3 +9,5 @@ src/main/resources/client_secret.json
 logging.properties
 remote_structure.json
 config.json
+maps.json
+maps.example.json

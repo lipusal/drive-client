@@ -5,12 +5,16 @@ import com.google.api.services.drive.Drive;
 import com.google.api.services.drive.model.File;
 import com.google.api.services.drive.model.FileList;
 import com.google.gson.Gson;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
 import com.google.gson.stream.JsonWriter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
@@ -26,17 +30,26 @@ import java.util.concurrent.ExecutorService;
  * folder. This class constructs a tree-like structure to map remote folder IDs to local folders.
  */
 public class FilesystemMapper {
+    private static final Path DEFAULT_MAPS_FILE = Paths.get("maps.default.json");
+
     private final Path localRoot;
+    private final Path mapsFile;
     private final Directory mapRoot;
-    private final Path outputFile;
-    private final Drive drive;
+    private final Drive driveService;
     private final Logger logger = LoggerFactory.getLogger(FilesystemMapper.class);
 
-    public FilesystemMapper(Path localRoot, Drive driveRemote, Path dictionaryOutputFile) {
+    public FilesystemMapper(Path localRoot, Drive driveRemote, Path mapsFile) throws Exception {
+        Objects.requireNonNull(localRoot, "Local root may not be null");
+        Objects.requireNonNull(driveRemote, "Drive service may not be null");
+        Objects.requireNonNull(mapsFile, "Maps file may not be null");
+
         this.localRoot = localRoot;
-        this.mapRoot = new Directory("root", "ROOT");
-        this.drive = driveRemote;
-        this.outputFile = dictionaryOutputFile;
+        this.driveService = driveRemote;
+        this.mapsFile = Files.exists(mapsFile) ? mapsFile : DEFAULT_MAPS_FILE;
+        if (this.mapsFile == DEFAULT_MAPS_FILE) {
+            logger.warn("Maps file {} not found, falling back to default maps file {}", this.mapsFile, DEFAULT_MAPS_FILE);
+        }
+        this.mapRoot = parseMapsFile(this.mapsFile);
     }
 
     public Path mapToLocal(Path remotePath) {
@@ -47,7 +60,7 @@ public class FilesystemMapper {
             Directory nextDir = remoteDir.getSubdirById(subdirId.getFileName().toString()).orElseGet(() -> {
                 try {
                     // TODO take advantage of this remote request, register it in the map (though it would be weird to have all folder IDs without having them mapped already...)
-                    return new Directory(new RemoteExplorer(drive).findById(subdirId.getFileName().toString()));
+                    return new Directory(new RemoteExplorer(driveService).findById(subdirId.getFileName().toString()));
                 } catch (IOException e) {
                     logger.error("Couldn't map remote path '{}' to local, specifically in the '{}' part: {}", remotePath, subdirId, e.getStackTrace());
                     System.exit(1);
@@ -72,7 +85,7 @@ public class FilesystemMapper {
         List<String> pathSections = new ArrayList<>();
         for(Path localSubdir : namedPath) {
             String localSubdirName = localSubdir.getFileName().toString();
-            File remoteDir = new RemoteExplorer(drive).findFoldersByName(localSubdirName, currentRemoteDir.getId()).stream().findFirst().orElseThrow(NoSuchElementException::new);
+            File remoteDir = new RemoteExplorer(driveService).findFoldersByName(localSubdirName, currentRemoteDir.getId()).stream().findFirst().orElseThrow(NoSuchElementException::new);
             pathSections.add(remoteDir.getId());
             currentRemoteDir = new Directory(remoteDir);
         }
@@ -88,13 +101,13 @@ public class FilesystemMapper {
 //            Directory.class
 //        );
         Directory root = new Directory("13N1obnCJg-Bt3M5SOIKE8PSJvoHaCjNl", "client-root"); // TODO: Improve crawling algorithm (make it on-demand) and start from true root
-        getSubfoldersSingleThread(root, drive);
+        getSubfoldersSingleThread(root, driveService);
 //        ExecutorService threadPool = Executors.newFixedThreadPool(5);
-//        getSubfoldersRecursive(root, drive, threadPool);
+//        getSubfoldersRecursive(root, driveService, threadPool);
 //        threadPool.awaitTermination(1, TimeUnit.MINUTES);   // TODO: Make sure this terminates properly, ie. THE ENTIRE remote filesystem has been crawled
 
 
-        FileWriter writer = new FileWriter(outputFile.toFile());
+        FileWriter writer = new FileWriter(mapsFile.toFile());
         new Gson().toJson(root, Directory.class, new JsonWriter(writer));
         writer.close();
     }
@@ -170,5 +183,56 @@ public class FilesystemMapper {
             }
             return result;
         }
+    }
+
+    /**
+     * Parse a maps file, containing an JSON object with the structure of the object found in {@link #DEFAULT_MAPS_FILE},
+     * into a {@link Directory} with its corresponding subdirectories.
+     *
+     * @param mapsFile  The maps file from which to read data.
+     * @return          The equivalent Directory.
+     */
+    private Directory parseMapsFile(Path mapsFile) throws Exception {
+        Objects.requireNonNull(mapsFile);
+        JsonObject map = new Gson().fromJson(new FileReader(mapsFile.toFile()), JsonObject.class);
+        if (!map.has("root")) {
+            throw new Exception("Map in " + mapsFile + " does not include root directory");
+        }
+        Directory result = new Directory("root", localRoot.getFileName().toString());
+        parseDirectoryRecursive(result, map);
+        return result;
+    }
+
+    /**
+     * Recursively walks through the specified map, creating a tree of Directories.
+     *
+     * @param currentRoot   Current directory root.
+     * @param map           The map from which to read subdirectories.
+     */
+    private void parseDirectoryRecursive(Directory currentRoot, JsonObject map) {
+        List<String> entriesToRemove = new ArrayList<>();
+        // Find subdirs of current dir
+        map.entrySet().stream().filter(entry -> {
+            for (JsonElement parent : entry.getValue().getAsJsonObject().getAsJsonArray("parents")) {
+                if (parent.getAsString().equals(currentRoot.getId())) {
+                    return true;
+                }
+            }
+            return false;
+        }).forEach(entry -> {
+            // Add them to current directory subdir list
+            JsonObject mapSubdir = entry.getValue().getAsJsonObject();
+            Directory subdir = new Directory(entry.getKey(), mapSubdir.get("remoteName").getAsString());
+            currentRoot.getSubdirs().add(subdir);
+            entriesToRemove.add(entry.getKey());
+            // Recursively go deeper (DFS)
+            parseDirectoryRecursive(subdir, map);
+        });
+        // Remove all explored subdirs
+        entriesToRemove.forEach(map::remove);   // TODO make sure this does not throw a concurrent modification exception
+    }
+
+    public Directory getMapRoot() {
+        return mapRoot;
     }
 }

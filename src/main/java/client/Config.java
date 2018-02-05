@@ -6,6 +6,7 @@ import com.google.api.services.drive.model.File;
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
+import com.google.gson.JsonPrimitive;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -14,6 +15,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Scanner;
 
@@ -80,10 +82,11 @@ public class Config {
             logger.error("Couldn't get remote folders in configuration", e);
             System.exit(1);
         }
-        List<File> selectedDirs = new ArrayList<>(rootDirs.size());
+        List<File> selectedDirs = getSyncedFolders(rootDirs);
         boolean done = false;
         Scanner scanner = new Scanner(System.in);
         do {
+            // TODO: Support subdir management
             System.out.println("Selected folders:");
             for (int i = 0; i < rootDirs.size(); i++) {
                 File currentDir = rootDirs.get(i);
@@ -149,4 +152,19 @@ public class Config {
     public JsonObject getConfig() {
         return configuration;
     }
+
+    private List<File> getSyncedFolders(List<File> rootDirs) {
+        if (!configuration.get("sync").isJsonArray()) {
+            return Collections.emptyList();
+        }
+        List<File> result = new ArrayList<>(rootDirs.size());
+        rootDirs.forEach(dir -> {
+            if (configuration.getAsJsonArray("sync").contains(new JsonPrimitive(dir.getId()))) {
+                result.add(dir);
+            }
+        });
+        return result;
+    }
+
+    // TODO NOW: Export map to file on config
 }

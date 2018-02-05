@@ -53,6 +53,14 @@ public class Directory {
         return name + " (" + id + ")";
     }
 
+    public String tree() {
+        StringBuilder result = new StringBuilder(this.toString()).append("\n");
+        subdirs.forEach(directory -> {
+            result.append("\t").append(directory.tree());
+        });
+        return result.toString();
+    }
+
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
