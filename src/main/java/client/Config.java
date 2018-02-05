@@ -173,10 +173,10 @@ public class Config {
     }
 
     private List<File> getSyncedFolders(List<File> rootDirs) {
-        if (!configuration.get("sync").isJsonArray()) {
-            return Collections.emptyList();
-        }
         List<File> result = new ArrayList<>(rootDirs.size());
+        if (!configuration.get("sync").isJsonArray()) {
+            return result;
+        }
         rootDirs.forEach(dir -> {
             if (configuration.getAsJsonArray("sync").contains(new JsonPrimitive(dir.getId()))) {
                 result.add(dir);

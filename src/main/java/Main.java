@@ -132,6 +132,7 @@ public class Main {
 
         boolean runConfig = false;
         if (!Config.getInstance().isConfigured()) {
+            System.out.print("Configuration file not found. ");
             runConfig = true;
         } else {
             System.out.print("Enter anything if you would like to run the configuration. Waiting up to 5 seconds... ");
