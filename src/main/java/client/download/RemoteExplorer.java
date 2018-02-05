@@ -53,4 +53,16 @@ public class RemoteExplorer {
                 .setFields("files")     // Want complete file metadata
                 .execute().getFiles();
     }
+
+    /**
+     * Get the contents of the specified directory.
+     *
+     * @param directoryId ID of the remote directory.
+     * @return  The files.
+     */
+    public List<File> getContents(String directoryId) throws IOException {
+        return drive.files().list().setQ("'" + directoryId + "' in parents")
+                .setFields("files")     // Want complete file metadata
+                .execute().getFiles();
+    }
 }

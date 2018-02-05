@@ -4,6 +4,7 @@ import client.download.RemoteExplorer;
 import com.google.api.services.drive.Drive;
 import com.google.api.services.drive.model.File;
 import com.google.gson.*;
+import main.Main;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -12,11 +13,13 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.Scanner;
 
 public class Config {
+    public static final String FOLDER_MIME_TYPE = "application/vnd.google-apps.folder";
+    public static final long MAX_DIRECT_DOWNLOAD_SIZE = 5000000;    // 5MB TODO move this to config file
+
     private String REMOTE_ROOT_ID;      // TODO: Move this to FilesystemMapper?
     private static Config instance;
 
@@ -196,7 +199,7 @@ public class Config {
         // TODO: Rather than overwriting map file, merge it with already-existing one, if present
         JsonObject result = new JsonObject();
         result.add("root", new JsonPrimitive(REMOTE_ROOT_ID));
-        result.add(REMOTE_ROOT_ID, mapEntry("root", Paths.get("TODO"), true));
+        result.add(REMOTE_ROOT_ID, mapEntry("root", Main.ROOT, true));
         buildMapEntryRecursive(REMOTE_ROOT_ID, new ArrayList<>(dirs), result);
 
         Writer w = new FileWriter(outputFile.toAbsolutePath().toFile());
@@ -212,8 +215,9 @@ public class Config {
                 .filter(file -> file.getParents().contains(currentParentId))
                 // Add them to resulting object
                 .forEach(file -> {
-                    output.add(file.getId(), mapEntry(file.getName(), null, true, currentParentId));
-//                    idsToRemove.add(file.getId());
+                    Path localPath = Paths.get(output.getAsJsonObject(currentParentId).get("localPath").getAsString(), file.getName());
+                    output.add(file.getId(), mapEntry(file.getName(), localPath, true, currentParentId));
+//                    idsToRemove.add(file.getRemoteId());
                     buildMapEntryRecursive(file.getId(), dirs, output);
                 });
     }

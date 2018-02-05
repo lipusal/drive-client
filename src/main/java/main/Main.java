@@ -1,3 +1,5 @@
+package main;
+
 import client.Config;
 import client.FilesystemMapper;
 import client.LocalDirectoryWatcher;
@@ -36,7 +38,7 @@ public class Main {
     /**
      * Root of locally-synchronized files
      */
-    private static final Path ROOT = Paths.get("D:\\Users\\juan_\\Desktop\\drive-test-root");
+    public static final Path ROOT = Paths.get("D:\\Users\\juan_\\Desktop\\drive-test-root");    // TODO move this to config
 
     /**
      * Logger
