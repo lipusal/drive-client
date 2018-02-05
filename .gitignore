@@ -6,4 +6,6 @@ out/
 gradle/wrapper/gradle-wrapper.properties
 
 src/main/resources/client_secret.json
+logging.properties
 remote_structure.json
+config.json

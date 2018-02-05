@@ -1,3 +1,4 @@
+import client.Config;
 import client.FilesystemMapper;
 import client.LocalDirectoryWatcher;
 import client.upload.FileCreator;
@@ -17,13 +18,13 @@ import com.google.api.services.drive.model.File;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
+import java.io.*;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Collections;
 import java.util.List;
+import java.util.Scanner;
+import java.util.concurrent.*;
 
 public class Main {
     /**
@@ -123,11 +124,32 @@ public class Main {
                 .build();
     }
 
-    public static void main(String[] args) throws IOException, InterruptedException {
+    public static void main(String[] args) throws Exception {
         logger.debug("Starting up...");
 
         // Build a new authorized API client service.
         Drive driveService = getDriveService();
+
+        boolean runConfig = false;
+        if (!Config.getInstance().isConfigured()) {
+            runConfig = true;
+        } else {
+            System.out.print("Enter anything if you would like to run the configuration. Waiting up to 5 seconds... ");
+            try {
+                runConfig = Executors.newFixedThreadPool(1).submit(() -> {
+                    Scanner scanner = new Scanner(System.in);
+                    return scanner.nextLine() != null;   // Anything will go
+                }).get(5, TimeUnit.SECONDS);
+            } catch (TimeoutException e) {
+                runConfig = false;
+            }
+        }
+        if (runConfig) {
+            System.out.println("Running configuration...");
+            Config.getInstance().configureRemote(driveService);
+        } else {
+            System.out.println("Skipping configuration");
+        }
 
         System.out.println(new FilesystemMapper(ROOT, driveService, Paths.get("remote_structure.json")).mapToIds(Paths.get("ITBA", "4to Año", "2do Cuatri")));
 

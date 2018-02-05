@@ -1,0 +1,7 @@
+{
+  "mapsFile": "maps.json",
+  "sync": null,
+  "ignore": [
+    ".git/.*"
+  ]
+}
