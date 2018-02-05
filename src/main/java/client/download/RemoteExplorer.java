@@ -49,6 +49,6 @@ public class RemoteExplorer {
      * Get subdirectories of the specified directory ID.
      */
     public List<File> getSubdirs(String parentDirId) throws IOException {
-        return drive.files().list().setQ(parentDirId + "' in parents and mimeType='application/vnd.google-apps.folder'").execute().getFiles();
+        return drive.files().list().setQ("'" + parentDirId + "' in parents and mimeType='application/vnd.google-apps.folder'").execute().getFiles();
     }
 }
