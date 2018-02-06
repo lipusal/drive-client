@@ -71,7 +71,7 @@ public class DirectorySyncer {
             Path localPath = Paths.get(directoryMap.getLocalPath().toString(), dir.getName()).normalize();
             if (!Files.exists(localPath)) {
                 logger.debug("Creating local directory {}, mapped to remote directory {}", localPath, dir.getId());
-                Files.createDirectory(localPath);
+                Files.createDirectories(localPath);
             } else if (!Files.isDirectory(localPath)) {
                 logger.error("Local file {} already exists, can't create a file of the same name (I think?). Aborting.", localPath);
                 throw new IllegalStateException("Can't create local directory " + localPath + ": A file of the same name already exists.");
