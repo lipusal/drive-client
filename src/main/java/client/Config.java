@@ -15,6 +15,7 @@ import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Scanner;
+import java.util.stream.Collectors;
 
 public class Config {
     public static final String FOLDER_MIME_TYPE = "application/vnd.google-apps.folder";
@@ -94,7 +95,7 @@ public class Config {
             logger.error("Couldn't get remote folders in configuration", e);
             System.exit(1);
         }
-        List<File> selectedDirs = getSyncedFolders(rootDirs);
+        List<File> selectedDirs = getAlreadySelectedDirs(rootDirs);
         boolean done = false;
         Scanner scanner = new Scanner(System.in);
         do {
@@ -175,7 +176,11 @@ public class Config {
         return configuration;
     }
 
-    private List<File> getSyncedFolders(List<File> rootDirs) {
+    public List<String> getSyncedFolderIds() {
+        return Util.streamFromIterator(configuration.getAsJsonArray("sync").iterator()).map(JsonElement::getAsString).collect(Collectors.toList());
+    }
+
+    private List<File> getAlreadySelectedDirs(List<File> rootDirs) {
         List<File> result = new ArrayList<>(rootDirs.size());
         if (!configuration.get("sync").isJsonArray()) {
             return result;

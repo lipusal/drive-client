@@ -49,6 +49,22 @@ public class DirectoryMap {
         return subdirs.stream().filter(directoryMap -> directoryMap.remoteId.equals(id)).findFirst();
     }
 
+    // TODO: Create a Map<String(directoryId), DirectoryMap> elsewhere to have O(1) access to whole tree.
+    public Optional<DirectoryMap> getSubdirByIdRecursive(String id) {
+        Optional<DirectoryMap> result = getSubdirById(id);
+        if (result.isPresent()) {
+            return result;
+        } else {
+            for(DirectoryMap subdir : getSubdirs()) {
+                result = subdir.getSubdirByIdRecursive(id);
+                if (result.isPresent()) {
+                    return result;
+                }
+            }
+        }
+        return result;
+    }
+
     @Override
     public String toString() {
         return name + " (" + remoteId + ")";

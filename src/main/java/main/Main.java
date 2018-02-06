@@ -1,6 +1,7 @@
 package main;
 
 import client.Config;
+import client.DirectorySyncer;
 import client.FilesystemMapper;
 import client.LocalDirectoryWatcher;
 import client.upload.FileCreator;
@@ -157,17 +158,29 @@ public class Main {
         /* *********************************************************************************************************
          *                                  SYNC LOCAL AND REMOTE FILE FILESYSTEMS
          * ********************************************************************************************************/
+        // Map local folders <=> remote folders
+        FilesystemMapper mapper = null;
         try {
-            FilesystemMapper mapper = new FilesystemMapper(ROOT, driveService, Paths.get(Config.getInstance().getConfig().get("mapFile").getAsString()));
+            mapper = new FilesystemMapper(ROOT, driveService, Paths.get(Config.getInstance().getConfig().get("mapFile").getAsString()));
             System.out.println(mapper.getMapRoot().tree());
         } catch (Exception e) {
             e.printStackTrace();
         }
+        // Sync content
+        System.out.println("Syncing...");
+        logger.debug("Beginning sync");
+        for(String directoryId : Config.getInstance().getSyncedFolderIds()) {
+            new DirectorySyncer(mapper.getMapRoot().getSubdirByIdRecursive(directoryId).orElseThrow(IllegalStateException::new), driveService).sync();
+        }
+        logger.debug("Sync complete!");
+
 
         /* *********************************************************************************************************
          *                                  WATCH AND UPLOAD LOCAL CHANGES
          * ********************************************************************************************************/
-        LocalDirectoryWatcher watcher = new LocalDirectoryWatcher(ROOT);
+        System.out.println("Watching directories for changes");
+        logger.debug("Watching {} for changes", mapper.getMapRoot().getLocalPath());
+        LocalDirectoryWatcher watcher = new LocalDirectoryWatcher(mapper.getMapRoot().getLocalPath()/*, TODO: true*/);
         watcher.setCreatedListener(changedFile -> {
             try {
                 File createdFile = new FileCreator(driveService, changedFile).call();

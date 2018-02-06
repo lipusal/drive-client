@@ -39,6 +39,7 @@ public class DirectorySyncer {
         logger.debug("Syncing {} to {}", directoryMap.getLocalPath(), directoryMap.getRemoteId());
         List<File> remoteFiles = pull();
         List<File> remoteDirs = remoteFiles.stream().filter(file -> file.getMimeType().equals(Config.FOLDER_MIME_TYPE)).collect(Collectors.toList());
+        remoteDirs.add(0, new File().setId(directoryMap.getRemoteId()).setName("."));   // Make sure the containing directory exists first
         remoteFiles.removeAll(remoteDirs);  // Keep only files in remoteFiles
 
         createLocalDirs(remoteDirs);
@@ -67,10 +68,13 @@ public class DirectorySyncer {
      */
     private void createLocalDirs(List<File> remoteDirs) throws IOException {
         for(File dir : remoteDirs) {
-            Path localPath = Paths.get(dir.getName()).resolve(directoryMap.getLocalPath());
+            Path localPath = Paths.get(directoryMap.getLocalPath().toString(), dir.getName()).normalize();
             if (!Files.exists(localPath)) {
-                logger.debug("Creating local directory {} mapping to remote directory {}", localPath, dir.getId());
+                logger.debug("Creating local directory {}, mapped to remote directory {}", localPath, dir.getId());
                 Files.createDirectory(localPath);
+            } else if (!Files.isDirectory(localPath)) {
+                logger.error("Local file {} already exists, can't create a file of the same name (I think?). Aborting.", localPath);
+                throw new IllegalStateException("Can't create local directory " + localPath + ": A file of the same name already exists.");
             }
         }
         // TODO NOW register mapping with FilesystemMapper
@@ -83,9 +87,9 @@ public class DirectorySyncer {
      */
     private void downloadFiles(List<File> remoteFiles) throws GeneralSecurityException, IOException {
         for(File remoteFile : remoteFiles) {
-            Path localPath = Paths.get(remoteFile.getName()).resolve(directoryMap.getLocalPath());
+            Path localPath = Paths.get(directoryMap.getLocalPath().toString(), remoteFile.getName());
             ZonedDateTime remoteLastModified = ZonedDateTime.parse(remoteFile.getModifiedTime().toStringRfc3339()),
-            localLastModified = ZonedDateTime.parse(Files.getLastModifiedTime(localPath).toString());
+            localLastModified = Files.exists(localPath) ? ZonedDateTime.parse(Files.getLastModifiedTime(localPath).toString()) : null;
 
             if (!Files.exists(localPath) || remoteLastModified.isAfter(localLastModified)) {
                 // TODO: Spread this over various threads (ie. executor service), use various channels per download, etc.
