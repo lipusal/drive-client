@@ -18,7 +18,7 @@ import java.util.Scanner;
 import java.util.stream.Collectors;
 
 public class Config {
-    public static final String FOLDER_MIME_TYPE = "application/vnd.google-apps.folder";
+    public static final String DIRECTORY_MIME_TYPE = "application/vnd.google-apps.folder";
     public static final long MAX_DIRECT_DOWNLOAD_SIZE = 5000000;    // 5MB TODO move this to config file
 
     private static Config instance;

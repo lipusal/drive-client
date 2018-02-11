@@ -38,7 +38,7 @@ public class DirectorySyncer {
     public void sync() throws IOException, GeneralSecurityException {
         logger.debug("Syncing {} to {}", directoryMap.getLocalPath(), directoryMap.getRemoteId());
         List<File> remoteFiles = pull();
-        List<File> remoteDirs = remoteFiles.stream().filter(file -> file.getMimeType().equals(Config.FOLDER_MIME_TYPE)).collect(Collectors.toList());
+        List<File> remoteDirs = remoteFiles.stream().filter(file -> file.getMimeType().equals(Config.DIRECTORY_MIME_TYPE)).collect(Collectors.toList());
         remoteDirs.add(0, new File().setId(directoryMap.getRemoteId()).setName("."));   // Make sure the containing directory exists first
         remoteFiles.removeAll(remoteDirs);  // Keep only files in remoteFiles
 
