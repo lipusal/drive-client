@@ -4,12 +4,12 @@ import client.download.RemoteExplorer;
 import com.google.api.services.drive.Drive;
 import com.google.api.services.drive.model.File;
 import com.google.gson.*;
-import main.Main;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.*;
 import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
@@ -47,8 +47,9 @@ public class Config {
         // Load saved config, if any
         try (Reader configReader = new FileReader(CONFIG_FILE.toFile())) {
             this.configuration = new Gson().fromJson(configReader, JsonObject.class);
+            logger.debug("Loaded configuration file {}", CONFIG_FILE.toString());
         } catch (FileNotFoundException e) {
-            logger.debug("Config file {} not found, using default config", CONFIG_FILE.toString());
+            logger.debug("Configuration file {} not found, using default config", CONFIG_FILE.toString());
         } catch (IOException e) {
             logger.warn("Abnormal error loading config file {}, using default config", CONFIG_FILE, e);
         }
@@ -65,11 +66,12 @@ public class Config {
 
     public void configureRemote(Drive driveService) {
         System.out.println("\n*************************************************\n");
-        System.out.println("Welcome to the configuration. Let's start by setting which folders you want to synchronize");
+        System.out.println("Welcome to the configuration!");
 
         // Get remote root folder ID, necessary for some computations
         if (REMOTE_ROOT_ID == null) {
             try {
+                logger.debug("Remote root ID not set, fetching from remote");
                 REMOTE_ROOT_ID = new RemoteExplorer(driveService).findById("root").getId();
             } catch (IOException e) {
                 System.err.println("Couldn't fetch necessary information. Exiting.");
@@ -78,13 +80,50 @@ public class Config {
             }
         }
         // Configure
+        setLocalRoot();
         setSyncedRemoteFolders(driveService);
 
         System.out.println("Configuration complete!");
         System.out.println("\n*************************************************\n");
     }
 
-    public void setSyncedRemoteFolders(Drive driveService) {
+    private void setLocalRoot() {
+        logger.debug("Setting local root");
+        Path localRoot = getLocalRoot();
+        Path enteredPath = null;
+        boolean canSkip = localRoot != null;
+        boolean done = false;
+        Scanner s = new Scanner(System.in);
+        do {
+            System.out.println("\nType the absolute path where you would like to sync folders (local root).");
+            System.out.printf("Current local root is %s\n", localRoot == null ? "not set" : localRoot);
+            if (canSkip) {
+                System.out.print("Enter \"q\" to skip and use current local root: ");
+            } else {
+                System.out.print("Local root: ");
+            }
+            try {
+                enteredPath = Paths.get(s.nextLine());
+                if (!enteredPath.isAbsolute()) {
+                    throw new InvalidPathException(enteredPath.toString(), "Entered path is not absolute", 0);
+                }
+                done = true;
+            } catch (InvalidPathException e) {
+                if (e.getInput().equalsIgnoreCase("q") && canSkip) {
+                    enteredPath = localRoot;
+                    done = true;
+                } else {
+                    System.out.printf("\nInvalid path: %s", e.getMessage());
+                }
+            }
+        } while (!done);
+
+        // Local root chosen, update config
+        configuration.add("localRoot", new JsonPrimitive(enteredPath.toString()));
+        logger.debug("Local root set to {}", enteredPath);
+    }
+
+    private void setSyncedRemoteFolders(Drive driveService) {
         System.out.println("Loading your Drive folders...");
 
         List<File> rootDirs = null;
@@ -148,9 +187,7 @@ public class Config {
 
         logger.debug("Marking {} directories for sync (overwriting any previous configured directories)", selectedDirs.size());
         JsonArray syncedDirs = new JsonArray(selectedDirs.size());
-        selectedDirs.forEach(file -> {
-            syncedDirs.add(file.getId());
-        });
+        selectedDirs.forEach(file -> syncedDirs.add(file.getId()));
         configuration.add("sync", syncedDirs);
         // Write to file
         try(Writer configWriter = new FileWriter(CONFIG_FILE.toFile())) {
@@ -180,6 +217,15 @@ public class Config {
         return Util.streamFromIterator(configuration.getAsJsonArray("sync").iterator()).map(JsonElement::getAsString).collect(Collectors.toList());
     }
 
+    public Path getLocalRoot() {
+        JsonElement localPath = configuration.get("localRoot");
+        return localPath.isJsonNull() ? null : Paths.get(localPath.getAsString()).toAbsolutePath();
+    }
+
+    public Path getMapFilePath() {
+        return Paths.get(configuration.getAsJsonPrimitive("mapFile").getAsString()).toAbsolutePath();
+    }
+
     private List<File> getAlreadySelectedDirs(List<File> rootDirs) {
         List<File> result = new ArrayList<>(rootDirs.size());
         if (!configuration.get("sync").isJsonArray()) {
@@ -204,7 +250,7 @@ public class Config {
         // TODO: Rather than overwriting map file, merge it with already-existing one, if present
         JsonObject result = new JsonObject();
         result.add("root", new JsonPrimitive(REMOTE_ROOT_ID));
-        result.add(REMOTE_ROOT_ID, mapEntry("root", Main.ROOT, true));
+        result.add(REMOTE_ROOT_ID, mapEntry("root", getLocalRoot(), true));
         buildMapEntryRecursive(REMOTE_ROOT_ID, new ArrayList<>(dirs), result);
 
         Writer w = new FileWriter(outputFile.toAbsolutePath().toFile());
