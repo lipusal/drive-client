@@ -21,12 +21,11 @@ public class Config {
     public static final String FOLDER_MIME_TYPE = "application/vnd.google-apps.folder";
     public static final long MAX_DIRECT_DOWNLOAD_SIZE = 5000000;    // 5MB TODO move this to config file
 
-    private String REMOTE_ROOT_ID;      // TODO: Move this to FilesystemMapper?
     private static Config instance;
 
     private JsonObject configuration;
-    private static final Path CONFIG_FILE = Paths.get("config.json");
-    private static final Path DEFAULT_CONFIG_FILE = Paths.get("config.default.json");
+    private static final Path CONFIG_FILE = Paths.get("config.json").toAbsolutePath();
+    private static final Path DEFAULT_CONFIG_FILE = Paths.get("config.default.json").toAbsolutePath();
     private Logger logger = LoggerFactory.getLogger(getClass());
 
     public static Config getInstance() {
@@ -64,15 +63,15 @@ public class Config {
         return Files.exists(CONFIG_FILE);
     }
 
-    public void configureRemote(Drive driveService) {
+    public void configure(Drive driveService) {
         System.out.println("\n*************************************************\n");
         System.out.println("Welcome to the configuration!");
 
         // Get remote root folder ID, necessary for some computations
-        if (REMOTE_ROOT_ID == null) {
+        if (getRemoteRoot() == null) {
             try {
                 logger.debug("Remote root ID not set, fetching from remote");
-                REMOTE_ROOT_ID = new RemoteExplorer(driveService).findById("root").getId();
+                setRemoteRootId(fetchRemoteRootId(driveService));
             } catch (IOException e) {
                 System.err.println("Couldn't fetch necessary information. Exiting.");
                 logger.error("Couldn't get ID of remote root, can't continue", e);
@@ -82,6 +81,15 @@ public class Config {
         // Configure
         setLocalRoot();
         setSyncedRemoteFolders(driveService);
+        // Save config
+        try {
+            logger.debug("Saving updated config to {}", CONFIG_FILE);
+            writeToFile();
+        } catch (Exception e) {
+            System.err.println("Couldn't save configuration, exiting.");
+            logger.error("Couldn't save config", e);
+            System.exit(1);
+        }
 
         System.out.println("Configuration complete!");
         System.out.println("\n*************************************************\n");
@@ -128,7 +136,7 @@ public class Config {
 
         List<File> rootDirs = null;
         try {
-            rootDirs = new RemoteExplorer(driveService).getSubdirs(REMOTE_ROOT_ID);
+            rootDirs = new RemoteExplorer(driveService).getSubdirs(getRemoteRoot());
         } catch (IOException e) {
             System.err.println("Couldn't get your Drive folders: " + e.getMessage() + ". Exiting.");
             logger.error("Couldn't get remote folders in configuration", e);
@@ -189,19 +197,12 @@ public class Config {
         JsonArray syncedDirs = new JsonArray(selectedDirs.size());
         selectedDirs.forEach(file -> syncedDirs.add(file.getId()));
         configuration.add("sync", syncedDirs);
-        // Write to file
-        try(Writer configWriter = new FileWriter(CONFIG_FILE.toFile())) {
-            new Gson().toJson(configuration, configWriter);
-        } catch (Exception e) {
-            System.err.println("Couldn't save configuration, exiting.");
-            logger.error("Couldn't save synced directories", e);
-            System.exit(1);
-        }
 
         // Update map file
-        logger.debug("Updating map file");
+        Path mapFile = getMapFilePath();
+        logger.debug("Updating map file {}", mapFile);
         try {
-            buildMap(selectedDirs, Paths.get(configuration.get("mapFile").getAsString()));
+            buildMap(selectedDirs, mapFile);
         } catch (IOException e) {
             System.err.println("Couldn't save configuration, exiting.");
             logger.error("Couldn't update map file", e);
@@ -223,7 +224,26 @@ public class Config {
     }
 
     public Path getMapFilePath() {
-        return Paths.get(configuration.getAsJsonPrimitive("mapFile").getAsString()).toAbsolutePath();
+        return Paths.get(configuration.get("mapFile").getAsString()).toAbsolutePath();
+    }
+
+    public String getRemoteRoot() {
+        JsonElement remoteRoot = configuration.get("remoteRoot");
+        return (remoteRoot == null || remoteRoot.isJsonNull()) ? null : remoteRoot.getAsString();
+    }
+
+    private void setRemoteRootId(String remoteRootId) {
+        configuration.add("remoteRoot", new JsonPrimitive(remoteRootId));
+    }
+
+    private String fetchRemoteRootId(Drive driveService) throws IOException {
+        return new RemoteExplorer(driveService).findById("root").getId();
+    }
+
+    private void writeToFile() throws IOException {
+        Writer configWriter = new FileWriter(CONFIG_FILE.toFile());
+        new Gson().toJson(configuration, configWriter);
+        configWriter.close();
     }
 
     private List<File> getAlreadySelectedDirs(List<File> rootDirs) {
@@ -240,7 +260,7 @@ public class Config {
     }
 
     /**
-     * Build a map, compatible with {@link FilesystemMapper}, based on directories selected in {@link #configureRemote(Drive)}.
+     * Build a map, compatible with {@link FilesystemMapper}, based on directories selected in {@link #configure(Drive)}.
      *
      * @param dirs          The directories to build a map for.
      * @param outputFile    Where to output the file
@@ -249,9 +269,10 @@ public class Config {
     private void buildMap(List<File> dirs, Path outputFile) throws IOException {
         // TODO: Rather than overwriting map file, merge it with already-existing one, if present
         JsonObject result = new JsonObject();
-        result.add("root", new JsonPrimitive(REMOTE_ROOT_ID));
-        result.add(REMOTE_ROOT_ID, mapEntry("root", getLocalRoot(), true));
-        buildMapEntryRecursive(REMOTE_ROOT_ID, new ArrayList<>(dirs), result);
+        String remoteRootId = getRemoteRoot();
+        result.add("root", new JsonPrimitive(remoteRootId));
+        result.add(remoteRootId, mapEntry("root", getLocalRoot(), true));
+        buildMapEntryRecursive(remoteRootId, new ArrayList<>(dirs), result);
 
         Writer w = new FileWriter(outputFile.toAbsolutePath().toFile());
         new Gson().toJson(result, w);
@@ -289,6 +310,4 @@ public class Config {
 
         return result;
     }
-
-    // TODO: Add localRoot to config?
 }

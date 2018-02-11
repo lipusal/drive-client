@@ -37,11 +37,6 @@ public class Main {
             "JuanLiPuma-DriveClient/1.0";
 
     /**
-     * Root of locally-synchronized files
-     */
-    public static final Path ROOT = Paths.get("D:\\Users\\juan_\\Desktop\\drive-test-root");    // TODO move this to config
-
-    /**
      * Logger
      */
     private static final Logger logger = LoggerFactory.getLogger(Main.class);
@@ -93,7 +88,7 @@ public class Main {
      * @return an authorized Credential object.
      * @throws IOException
      */
-    public static Credential authorize() throws IOException {
+    private static Credential authorize() throws IOException {
         // Load client secrets.
         InputStream in =
                 Main.class.getResourceAsStream("/client_secret.json");
@@ -119,7 +114,7 @@ public class Main {
      * @return an authorized Drive client service
      * @throws IOException
      */
-    public static Drive getDriveService() throws IOException {
+    private static Drive getDriveService() throws IOException {
         Credential credential = authorize();
         return new Drive.Builder(
                 HTTP_TRANSPORT, JSON_FACTORY, credential)
@@ -133,7 +128,7 @@ public class Main {
         // Build a new authorized API client service.
         Drive driveService = getDriveService();
 
-        boolean runConfig = false;
+        boolean runConfig;
         if (!Config.getInstance().isConfigured()) {
             System.out.print("Configuration file not found. ");
             runConfig = true;
@@ -150,7 +145,7 @@ public class Main {
         }
         if (runConfig) {
             System.out.println("Running configuration...");
-            Config.getInstance().configureRemote(driveService);
+            Config.getInstance().configure(driveService);
         } else {
             System.out.println("Skipping configuration");
         }
@@ -161,7 +156,7 @@ public class Main {
         // Map local folders <=> remote folders
         FilesystemMapper mapper = null;
         try {
-            mapper = new FilesystemMapper(ROOT, driveService, Paths.get(Config.getInstance().getConfig().get("mapFile").getAsString()));
+            mapper = new FilesystemMapper(Config.getInstance().getLocalRoot(), driveService, Paths.get(Config.getInstance().getConfig().get("mapFile").getAsString()));
             System.out.println(mapper.getMapRoot().tree());
         } catch (Exception e) {
             e.printStackTrace();
