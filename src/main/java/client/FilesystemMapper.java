@@ -78,40 +78,6 @@ public class FilesystemMapper {
         return null;
     }
 
-    // FIXME: Gotta find a way to distribute search, waiting until entire filesystem is crawled, without going over limit.
-//    private void getSubfoldersRecursive(DirectoryMap directoryMap, Drive drive, ExecutorService threadPool) throws ExecutionException, InterruptedException {
-//        Objects.requireNonNull(directoryMap, "DirectoryMap may not be null");
-//        List<File> driveSubdirs = threadPool.submit(new SubdirLister(directoryMap, drive)).get();
-//        System.out.printf("Subdirs of %s: %s\n", directoryMap.getName(), driveSubdirs);
-//        for(File driveSubdir :  driveSubdirs) {
-//            DirectoryMap subdir = new DirectoryMap(driveSubdir.getId(), driveSubdir.getName());
-//            synchronized (directoryMap.getSubdirs()) {
-//                directoryMap.getSubdirs().add(subdir);
-//            }
-//            threadPool.submit(() -> {
-//                try {
-//                    Thread.sleep(100 * 5);  // Drive API limit is 1000req/100 sec, or 10req/sec. Add some delay to prevent going over limit.
-//                    getSubfoldersRecursive(subdir, drive, threadPool);
-//                } catch (Exception e) {
-//                    logger.error("Couldn't get subdirectories of {} ({}): {}", directoryMap.getName(), directoryMap.getRemoteId(), e.getStackTrace());
-//                }
-//            });
-//        }
-//    }
-
-//    private void getSubfoldersSingleThread(DirectoryMap directoryMap, Drive drive) throws Exception {
-//        Objects.requireNonNull(directoryMap, "DirectoryMap may not be null");
-//        Objects.requireNonNull(drive, "Drive service may not be null");
-//        List<File> driveSubdirs = new SubdirLister(directoryMap, drive).call();
-//        System.out.printf("Subdirs of %s: %s\n", directoryMap.getName(), driveSubdirs);
-//        for(File driveSubdir :  driveSubdirs) {
-//            DirectoryMap subdir = new DirectoryMap(driveSubdir.getId(), driveSubdir.getName());
-//            directoryMap.getSubdirs().add(subdir);
-//            Thread.sleep(100);  // Drive API limit is 1000req/100 sec, or 10req/sec. Add some delay to prevent going over limit.
-//            getSubfoldersSingleThread(subdir, drive);
-//        }
-//    }
-
     // TODO: This can be changed back to a method
     private static final class SubdirLister implements Callable<List<File>> {
         private final DirectoryMap directoryMap;
