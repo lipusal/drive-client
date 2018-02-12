@@ -78,45 +78,6 @@ public class FilesystemMapper {
         return null;
     }
 
-    // TODO: This can be changed back to a method
-    private static final class SubdirLister implements Callable<List<File>> {
-        private final DirectoryMap directoryMap;
-        private final Drive drive;
-        private final Logger logger = LoggerFactory.getLogger(SubdirLister.class);
-
-        SubdirLister(DirectoryMap dir, Drive drive) {
-            Objects.requireNonNull(dir, "DirectoryMap may not be null");
-            Objects.requireNonNull(dir.getRemoteId(), "Directory ID may not be null");
-            Objects.requireNonNull(drive, "Drive service may not be null");
-            this.directoryMap = dir;
-            this.drive = drive;
-        }
-
-        @Override
-        public List<File> call() throws Exception {
-            boolean firstPage = true;
-            String nextPageToken = null;
-            List<File> result = new ArrayList<>();
-            while (firstPage || nextPageToken != null) {
-                Drive.Files.List request = drive.files().list()
-                        .setQ("mimeType='application/vnd.google-apps.folder' and '" + directoryMap.getRemoteId() + "' in parents")
-                        .setFields("nextPageToken,incompleteSearch,files(id,name)");
-                if (!firstPage) {
-                    request.setPageToken(nextPageToken);
-                } else {
-                    firstPage = false;
-                }
-                FileList response = request.execute();
-                if (response.getIncompleteSearch()) {
-                    logger.warn("WARNING: Searching subfolders of folder with ID {} yielded an incomplete search.", directoryMap.getRemoteId());
-                }
-                result.addAll(response.getFiles());
-                nextPageToken = response.getNextPageToken();
-            }
-            return result;
-        }
-    }
-
     /**
      * Parse a map file, containing an JSON object with the structure of the object found in {@link #DEFAULT_MAP_FILE},
      * into a {@link DirectoryMap} with its corresponding subdirectories.
