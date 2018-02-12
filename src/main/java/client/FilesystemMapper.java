@@ -1,8 +1,6 @@
 package client;
 
 import com.google.api.services.drive.Drive;
-import com.google.api.services.drive.model.File;
-import com.google.api.services.drive.model.FileList;
 import com.google.gson.Gson;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -14,7 +12,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.*;
-import java.util.concurrent.Callable;
 
 /**
  * Folders in Drive are exclusively identified with IDs, and every folder's parents are merely another property of the
@@ -48,17 +45,40 @@ public class FilesystemMapper {
     }
 
     /**
+     * Get a directory mapping by its remote ID.
+     *
+     * @param remoteId  The remote folder's ID.
+     * @return          The matching directory mapping, or {@code null} if there is no mapping for the specified remote ID.
+     */
+    public DirectoryMap getMapping(String remoteId) {
+        return mappingMap.get(remoteId);
+    }
+
+    /**
+     * Get a directory mapping by its absolute local path.
+     * @param localPath Local directory path. If not absolute, is made absolute for searching.
+     * @return          The matching directory mapping, or {@code null} if not mapped.
+     */
+    public DirectoryMap getMapping(Path localPath) {
+        if (!localPath.isAbsolute()) {
+            localPath = localPath.toAbsolutePath();
+        }
+        for(DirectoryMap mapping : mappingMap.values()) {
+            if (mapping.getLocalPath().equals(localPath)) {
+                return mapping;
+            }
+        }
+        return null;
+    }
+
+    /**
      * Get the local path of a remote folder, identified by its ID.
      *
      * @param remoteId  The remote folder's ID.
      * @return          The matching local path, or {@code null} if there is no mapping for the specified remote ID.
      */
     public Path getLocalPath(String remoteId) {
-        DirectoryMap mapping = mappingMap.get(remoteId);
-        if (mapping == null) {
-            return null;
-        }
-        return mapping.getLocalPath();
+        return Optional.ofNullable(getMapping(remoteId)).map(DirectoryMap::getLocalPath).orElse(null);
     }
 
     /**
@@ -67,15 +87,7 @@ public class FilesystemMapper {
      * @return          The ID of the mapped remote folder, or {@code null} if not mapped.
      */
     public String getRemoteId(Path localPath) {
-        if (!localPath.isAbsolute()) {
-            localPath = localPath.toAbsolutePath();
-        }
-        for(DirectoryMap mapping : mappingMap.values()) {
-            if (mapping.getLocalPath().equals(localPath)) {
-                return mapping.getRemoteId();
-            }
-        }
-        return null;
+        return Optional.ofNullable(getMapping(localPath)).map(DirectoryMap::getRemoteId).orElse(null);
     }
 
     /**
@@ -150,7 +162,13 @@ public class FilesystemMapper {
         return result;
     }
 
-    public DirectoryMap getMapRoot() {
-        return mapRoot;
+    public Path getLocalRoot() {
+        return localRoot;
     }
+
+    @Override
+    public String toString() {
+        return mapRoot.tree();
+    }
+
 }

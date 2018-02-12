@@ -156,15 +156,16 @@ public class Main {
         FilesystemMapper mapper = null;
         try {
             mapper = new FilesystemMapper(Paths.get(Config.getInstance().getConfig().get("mapFile").getAsString()).toAbsolutePath(), driveService);
-            System.out.println(mapper.getMapRoot().tree());
+            System.out.println(mapper);
         } catch (Exception e) {
             e.printStackTrace();
+            System.exit(1);
         }
         // Sync content
         System.out.println("Syncing...");
         logger.debug("Beginning sync");
         for(String directoryId : Config.getInstance().getSyncedFolderIds()) {
-            new DirectorySyncer(mapper.getMapRoot().getSubdirByIdRecursive(directoryId).orElseThrow(IllegalStateException::new), driveService).sync();
+            new DirectorySyncer(mapper.getMapping(directoryId), driveService).sync();
         }
         logger.debug("Sync complete!");
 
@@ -173,8 +174,8 @@ public class Main {
          *                                  WATCH AND UPLOAD LOCAL CHANGES
          * ********************************************************************************************************/
         System.out.println("Watching directories for changes");
-        logger.debug("Watching {} for changes", mapper.getMapRoot().getLocalPath());
-        LocalDirectoryWatcher watcher = new LocalDirectoryWatcher(mapper.getMapRoot().getLocalPath()/*, TODO: true*/);
+        logger.debug("Watching {} for changes", mapper.getLocalRoot());
+        LocalDirectoryWatcher watcher = new LocalDirectoryWatcher(mapper.getLocalRoot()/*, TODO: true*/);
         watcher.setCreatedListener(changedFile -> {
             try {
                 File createdFile = new FileCreator(driveService, changedFile).call();
