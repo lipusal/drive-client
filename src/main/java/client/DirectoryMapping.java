@@ -13,21 +13,17 @@ import java.util.stream.Collectors;
  * {@link FilesystemMapper#mappingMap}.
  */
 public class DirectoryMapping {
-    private final String remoteId;
-    private final Path localPath;
-    private final String name;
+    private String remoteId;
+    private Path localPath;
     private final List<DirectoryMapping> subdirs = new ArrayList<>();
     private final Logger logger = LoggerFactory.getLogger(getClass());
+    private boolean sync = false;
 
-    public DirectoryMapping(String remoteId, Path localPath, DirectoryMapping... subdirs) {
+    public DirectoryMapping(String remoteId, Path localPath, boolean sync, DirectoryMapping... subdirs) {
         this.remoteId = remoteId;
         this.localPath = localPath;
-        this.name = localPath.getFileName().toString();
+        this.sync = sync;
         this.subdirs.addAll(Arrays.asList(subdirs));
-    }
-
-    public DirectoryMapping(Path localPath, DirectoryMapping... subdirs) {
-        this(null, localPath, subdirs);
     }
 
     public String getRemoteId() {
@@ -39,15 +35,31 @@ public class DirectoryMapping {
     }
 
     public String getName() {
-        return name;
+        return localPath.getFileName().toString();
     }
 
     public List<DirectoryMapping> getSubdirs() {
         return subdirs;
     }
 
+    public boolean isSynced() {
+        return sync;
+    }
+
+    public void setSync(boolean sync) {
+        this.sync = sync;
+    }
+
+    public void setRemoteId(String remoteId) {
+        this.remoteId = remoteId;
+    }
+
+    public void setLocalPath(Path localPath) {
+        this.localPath = localPath;
+    }
+
     public List<DirectoryMapping> getSubdirsByName(String name) {
-        return subdirs.stream().filter(directoryMapping -> directoryMapping.name.equals(name)).collect(Collectors.toList());
+        return subdirs.stream().filter(directoryMapping -> directoryMapping.getName().equals(name)).collect(Collectors.toList());
     }
 
     public Optional<DirectoryMapping> getSubdirById(String id) {
@@ -56,7 +68,7 @@ public class DirectoryMapping {
 
     @Override
     public String toString() {
-        return name + " (" + remoteId + ")";
+        return getName() + " (" + remoteId + ")";
     }
 
     public String tree() {
