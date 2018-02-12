@@ -22,8 +22,8 @@ public class FilesystemMapper {
 
     private final Path mapFile;
     private final Drive driveService;
-    private final DirectoryMap mapRoot;
-    private final Map<String, DirectoryMap> mappingMap;
+    private final DirectoryMapping mapRoot;
+    private final Map<String, DirectoryMapping> mappingMap;
     private final Path localRoot;
     private final Logger logger = LoggerFactory.getLogger(FilesystemMapper.class);
 
@@ -50,7 +50,7 @@ public class FilesystemMapper {
      * @param remoteId  The remote folder's ID.
      * @return          The matching directory mapping, or {@code null} if there is no mapping for the specified remote ID.
      */
-    public DirectoryMap getMapping(String remoteId) {
+    public DirectoryMapping getMapping(String remoteId) {
         return mappingMap.get(remoteId);
     }
 
@@ -59,11 +59,11 @@ public class FilesystemMapper {
      * @param localPath Local directory path. If not absolute, is made absolute for searching.
      * @return          The matching directory mapping, or {@code null} if not mapped.
      */
-    public DirectoryMap getMapping(Path localPath) {
+    public DirectoryMapping getMapping(Path localPath) {
         if (!localPath.isAbsolute()) {
             localPath = localPath.toAbsolutePath();
         }
-        for(DirectoryMap mapping : mappingMap.values()) {
+        for(DirectoryMapping mapping : mappingMap.values()) {
             if (mapping.getLocalPath().equals(localPath)) {
                 return mapping;
             }
@@ -78,7 +78,7 @@ public class FilesystemMapper {
      * @return          The matching local path, or {@code null} if there is no mapping for the specified remote ID.
      */
     public Path getLocalPath(String remoteId) {
-        return Optional.ofNullable(getMapping(remoteId)).map(DirectoryMap::getLocalPath).orElse(null);
+        return Optional.ofNullable(getMapping(remoteId)).map(DirectoryMapping::getLocalPath).orElse(null);
     }
 
     /**
@@ -87,17 +87,17 @@ public class FilesystemMapper {
      * @return          The ID of the mapped remote folder, or {@code null} if not mapped.
      */
     public String getRemoteId(Path localPath) {
-        return Optional.ofNullable(getMapping(localPath)).map(DirectoryMap::getRemoteId).orElse(null);
+        return Optional.ofNullable(getMapping(localPath)).map(DirectoryMapping::getRemoteId).orElse(null);
     }
 
     /**
      * Parse a map file, containing an JSON object with the structure of the object found in {@link #DEFAULT_MAP_FILE},
-     * into a {@link DirectoryMap} with its corresponding subdirectories.
+     * into a {@link DirectoryMapping} with its corresponding subdirectories.
      *
      * @param mapFile  The map file from which to read data.
      * @return          The equivalent Directory.
      */
-    private DirectoryMap parseMapFile(Path mapFile) throws Exception {
+    private DirectoryMapping parseMapFile(Path mapFile) throws Exception {
         Objects.requireNonNull(mapFile);
         JsonObject map = new Gson().fromJson(new FileReader(mapFile.toFile()), JsonObject.class);
         if (!map.has("root") || !map.get("root").isJsonPrimitive()) {
@@ -105,7 +105,7 @@ public class FilesystemMapper {
         }
         String remoteRootId = map.get("root").getAsString();
         Path localRoot = Paths.get(map.getAsJsonObject(remoteRootId).get("localPath").getAsString()).toAbsolutePath();
-        DirectoryMap result = new DirectoryMap(remoteRootId, localRoot);
+        DirectoryMapping result = new DirectoryMapping(remoteRootId, localRoot);
         parseDirectoryRecursive(result, map);
         return result;
     }
@@ -116,7 +116,7 @@ public class FilesystemMapper {
      * @param currentRoot   Current directory root.
      * @param map           The map from which to read subdirectories.
      */
-    private void parseDirectoryRecursive(DirectoryMap currentRoot, JsonObject map) {
+    private void parseDirectoryRecursive(DirectoryMapping currentRoot, JsonObject map) {
         List<String> entriesToRemove = new ArrayList<>();
         // Find subdirs of current dir
         map.entrySet().stream().filter(entry -> {
@@ -133,7 +133,7 @@ public class FilesystemMapper {
             // Add them to current directoryMap subdir list
             JsonObject mapSubdir = entry.getValue().getAsJsonObject();
             Path localPath = Paths.get(mapSubdir.getAsJsonPrimitive("localPath").getAsString()).toAbsolutePath();
-            DirectoryMap subdir = new DirectoryMap(entry.getKey(), localPath);
+            DirectoryMapping subdir = new DirectoryMapping(entry.getKey(), localPath);
             currentRoot.getSubdirs().add(subdir);
             entriesToRemove.add(entry.getKey());
             // Recursively go deeper (DFS)
@@ -150,12 +150,12 @@ public class FilesystemMapper {
      * @param root  The root mapping
      * @return      The equivalent map.
      */
-    private Map<String, DirectoryMap> buildMappingMap(DirectoryMap root) {
-        Map<String, DirectoryMap> result = new HashMap<>();
-        Deque<DirectoryMap> mappingsToVisit = new LinkedList<>();
+    private Map<String, DirectoryMapping> buildMappingMap(DirectoryMapping root) {
+        Map<String, DirectoryMapping> result = new HashMap<>();
+        Deque<DirectoryMapping> mappingsToVisit = new LinkedList<>();
         mappingsToVisit.add(root);
         while(!mappingsToVisit.isEmpty()) {
-            DirectoryMap current = mappingsToVisit.pop();
+            DirectoryMapping current = mappingsToVisit.pop();
             result.put(current.getRemoteId(), current);
             mappingsToVisit.addAll(current.getSubdirs());
         }
