@@ -23,9 +23,9 @@ public class Config {
 
     private static Config instance;
 
-    private JsonObject configuration;
     private static final Path CONFIG_FILE = Paths.get("config.json").toAbsolutePath();
     private static final Path DEFAULT_CONFIG_FILE = Paths.get("config.default.json").toAbsolutePath();
+    private JsonObject configuration;
     private Logger logger = LoggerFactory.getLogger(getClass());
 
     public static Config getInstance() {
@@ -80,7 +80,7 @@ public class Config {
         }
         // Configure
         setLocalRoot();
-        setSyncedRemoteFolders(driveService);
+        setSyncedRemoteDirs(driveService);
         // Save config
         try {
             logger.debug("Saving updated config to {}", CONFIG_FILE);
@@ -131,7 +131,13 @@ public class Config {
         logger.debug("Local root set to {}", enteredPath);
     }
 
-    private void setSyncedRemoteFolders(Drive driveService) {
+    /**
+     * Set which remote directories will be synced.  Connects to Drive, allows the user to pick which folders to sync,
+     * and updates configuration
+     *
+     * @param driveService  The Drive service to fetch remote directories with.
+     */
+    private void setSyncedRemoteDirs(Drive driveService) {
         System.out.println("Loading your Drive folders...");
 
         List<File> rootDirs = null;
@@ -197,17 +203,6 @@ public class Config {
         JsonArray syncedDirs = new JsonArray(selectedDirs.size());
         selectedDirs.forEach(file -> syncedDirs.add(file.getId()));
         configuration.add("sync", syncedDirs);
-
-        // Update map file
-        Path mapFile = getMapFilePath();
-        logger.debug("Updating map file {}", mapFile);
-        try {
-            buildMap(selectedDirs, mapFile);
-        } catch (IOException e) {
-            System.err.println("Couldn't save configuration, exiting.");
-            logger.error("Couldn't update map file", e);
-            System.exit(1);
-        }
     }
 
     public JsonObject getConfig() {
@@ -256,58 +251,6 @@ public class Config {
                 result.add(dir);
             }
         });
-        return result;
-    }
-
-    /**
-     * Build a map, compatible with {@link FilesystemMapper}, based on directories selected in {@link #configure(Drive)}.
-     *
-     * @param dirs          The directories to build a map for.
-     * @param outputFile    Where to output the file
-     * @throws IOException  See {@link Gson#toJson(JsonElement, Appendable)}
-     */
-    private void buildMap(List<File> dirs, Path outputFile) throws IOException {
-        // TODO: Rather than overwriting map file, merge it with already-existing one, if present
-        JsonObject result = new JsonObject();
-        String remoteRootId = getRemoteRoot();
-        result.add("root", new JsonPrimitive(remoteRootId));
-        result.add(remoteRootId, mapEntry("root", getLocalRoot(), true));
-        buildMapEntryRecursive(remoteRootId, new ArrayList<>(dirs), result);
-
-        Writer w = new FileWriter(outputFile.toAbsolutePath().toFile());
-        new Gson().toJson(result, w);
-        w.close();
-    }
-
-    private void buildMapEntryRecursive(String currentParentId, List<File> dirs, JsonObject output) {
-        // Find all dirs with currentId as parents
-//        List<String> idsToRemove = new ArrayList<>(dirs.size());
-        // TODO: Use iterator() to go removing dirs as we visit them
-        dirs.stream()
-                .filter(file -> file.getParents().contains(currentParentId))
-                // Add them to resulting object
-                .forEach(file -> {
-                    Path localPath = Paths.get(output.getAsJsonObject(currentParentId).get("localPath").getAsString(), file.getName());
-                    output.add(file.getId(), mapEntry(file.getName(), localPath, true, currentParentId));
-//                    idsToRemove.add(file.getRemoteId());
-                    buildMapEntryRecursive(file.getId(), dirs, output);
-                });
-    }
-
-    /**
-     * Dynamically build a JsonObject with the shape of an entry as defined in the JSON declared in {@link FilesystemMapper#DEFAULT_MAP_FILE}.
-     */
-    private JsonObject mapEntry(String remoteName, Path localPath, boolean sync, String... parents) {
-        JsonObject result = new JsonObject();
-        result.add("remoteName", remoteName == null ? JsonNull.INSTANCE : new JsonPrimitive(remoteName));
-        JsonArray parentsAry = new JsonArray(parents.length);
-        for(String parent : parents) {
-            parentsAry.add(parent);
-        }
-        result.add("parents", parentsAry);
-        result.add("localPath", localPath == null ? JsonNull.INSTANCE : new JsonPrimitive(localPath.toString()));
-        result.add("sync", new JsonPrimitive(sync));
-
         return result;
     }
 }

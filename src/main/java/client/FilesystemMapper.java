@@ -1,13 +1,15 @@
 package client;
 
 import com.google.api.services.drive.Drive;
-import com.google.gson.Gson;
-import com.google.gson.JsonElement;
-import com.google.gson.JsonObject;
+import com.google.api.services.drive.model.File;
+import com.google.gson.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.FileReader;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.io.Writer;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -25,6 +27,7 @@ public class FilesystemMapper {
     private final DirectoryMapping mapRoot;
     private final Map<String, DirectoryMapping> mappingMap;
     private final Path localRoot;
+    private final String remoteRoot;
     private final Logger logger = LoggerFactory.getLogger(FilesystemMapper.class);
 
     public FilesystemMapper(Path mapFile, Drive driveRemote) throws Exception {
@@ -41,7 +44,12 @@ public class FilesystemMapper {
         this.driveService = driveRemote;
         this.mapRoot = parseMapFile(this.mapFile);
         this.localRoot = this.mapRoot.getLocalPath();
+        this.remoteRoot = this.mapRoot.getRemoteId();
         this.mappingMap = buildMappingMap(this.mapRoot);
+    }
+
+    public DirectoryMapping getRootMapping() {
+        return mapRoot;
     }
 
     /**
@@ -90,6 +98,39 @@ public class FilesystemMapper {
         return Optional.ofNullable(getMapping(localPath)).map(DirectoryMapping::getRemoteId).orElse(null);
     }
 
+    public void mapSubdir(Path localDir, File remoteDir, DirectoryMapping parentMapping) {
+        // TODO: Allow mapping files too, rather than just directories?
+        // Validation
+        Objects.requireNonNull(localDir);
+        Objects.requireNonNull(remoteDir);
+        Objects.requireNonNull(parentMapping);
+        if (!mappingMap.containsValue(parentMapping)) {
+            throw new IllegalArgumentException("Supplied parent mapping is not registered, must supply a registered parent mapping");
+        }
+
+        String remoteId = remoteDir.getId();
+        Optional<DirectoryMapping> mapping = parentMapping.getSubdirById(remoteId);
+        if (mapping.isPresent()) {
+            // Remote unchanged, update local path
+            mapping.get().setLocalPath(localDir);
+        } else {
+            // Remote unmapped, add subdir to parent
+            DirectoryMapping newMapping = new DirectoryMapping(remoteId, localDir, false);
+            parentMapping.getSubdirs().add(newMapping);
+            // Also add to mapping map
+            mappingMap.put(remoteId, newMapping);
+        }
+        logger.debug("Mapped {} <=> {}", localDir, remoteId);
+    }
+
+    /**
+     * Convenience method. Calls {@code map(localPath, remoteDir, parentMapping)}.
+     * @see #mapSubdir(Path, File, DirectoryMapping)
+     */
+    public void mapSubdir(File remoteDir, Path localPath, DirectoryMapping parentMapping) {
+        mapSubdir(localPath, remoteDir, parentMapping);
+    }
+
     /**
      * Parse a map file, containing an JSON object with the structure of the object found in {@link #DEFAULT_MAP_FILE},
      * into a {@link DirectoryMapping} with its corresponding subdirectories.
@@ -105,7 +146,7 @@ public class FilesystemMapper {
         }
         String remoteRootId = map.get("root").getAsString();
         Path localRoot = Paths.get(map.getAsJsonObject(remoteRootId).get("localPath").getAsString()).toAbsolutePath();
-        DirectoryMapping result = new DirectoryMapping(remoteRootId, localRoot);
+        DirectoryMapping result = new DirectoryMapping(remoteRootId, localRoot, false);
         parseDirectoryRecursive(result, map);
         return result;
     }
@@ -133,7 +174,7 @@ public class FilesystemMapper {
             // Add them to current directoryMap subdir list
             JsonObject mapSubdir = entry.getValue().getAsJsonObject();
             Path localPath = Paths.get(mapSubdir.getAsJsonPrimitive("localPath").getAsString()).toAbsolutePath();
-            DirectoryMapping subdir = new DirectoryMapping(entry.getKey(), localPath);
+            DirectoryMapping subdir = new DirectoryMapping(entry.getKey(), localPath, false);
             currentRoot.getSubdirs().add(subdir);
             entriesToRemove.add(entry.getKey());
             // Recursively go deeper (DFS)
@@ -144,8 +185,8 @@ public class FilesystemMapper {
     }
 
     /**
-     * Navigate through a directory mapping tree and build a map mapping remote directory IDs to directory mappings for
-     * easier access later.
+     * Navigate through a directory mapping tree and build a {@link Map} mapping remote directory IDs to directory
+     * mappings for easier access later.
      *
      * @param root  The root mapping
      * @return      The equivalent map.
@@ -166,9 +207,62 @@ public class FilesystemMapper {
         return localRoot;
     }
 
+    public String getRemoteRoot() {
+        return remoteRoot;
+    }
+
     @Override
     public String toString() {
         return mapRoot.tree();
+    }
+
+    /**
+     * Write the current mappings to the configured mapping file.
+     *
+     * @throws IOException  See {@link Gson#toJson(JsonElement, Appendable)}
+     */
+    public void writeToFile() throws IOException {
+        // TODO: Make this private and manage when to persist to file.
+
+        // Build JSON
+        JsonObject result = new JsonObject();
+        result.add("root", new JsonPrimitive(getRemoteRoot()));
+        buildMapJsonRecursive(mapRoot, result);
+
+        Writer w = new FileWriter(mapFile.toFile());
+        new Gson().toJson(result, w);
+        w.close();
+    }
+
+    /**
+     * Recursively build a JSON representation of the current mappings. Call this initially with the mapping root.
+     *
+     * @param mapping   The current mapping. Call this with the mapping root to cover everything.
+     * @param output    The JSON object where to add mappings.
+     */
+    private void buildMapJsonRecursive(DirectoryMapping mapping, JsonObject output) {
+        mapping.getSubdirs().forEach(subMapping -> {
+            // TODO: Add sync property, and other data, to DirectoryMapping
+            output.add(subMapping.getRemoteId(), mapEntry(subMapping.getName(), subMapping.getLocalPath(), true, mapping.getRemoteId()));
+            buildMapJsonRecursive(subMapping, output);  // DFS
+        });
+    }
+
+    /**
+     * Dynamically build a JsonObject with the shape of an entry as defined in the JSON declared in {@link FilesystemMapper#DEFAULT_MAP_FILE}.
+     */
+    private JsonObject mapEntry(String remoteName, Path localPath, boolean sync, String... parents) {
+        JsonObject result = new JsonObject();
+        result.add("remoteName", remoteName == null ? JsonNull.INSTANCE : new JsonPrimitive(remoteName));
+        JsonArray parentsAry = new JsonArray(parents.length);
+        for(String parent : parents) {
+            parentsAry.add(parent);
+        }
+        result.add("parents", parentsAry);
+        result.add("localPath", localPath == null ? JsonNull.INSTANCE : new JsonPrimitive(localPath.toString()));
+        result.add("sync", new JsonPrimitive(sync));
+
+        return result;
     }
 
 }
