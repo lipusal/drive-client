@@ -78,28 +78,6 @@ public class FilesystemMapper {
         return null;
     }
 
-    public void crawlRemote() throws Exception {
-        // Start with an empty tree, loaded from the specified JSON file
-//        JsonObject tree = new Gson().fromJson(
-//            new JsonReader(new InputStreamReader(
-//                getClass().getResourceAsStream("base_tree.json")
-//            )),
-//            DirectoryMap.class
-//        );
-
-//        DirectoryMap root = new DirectoryMap("13N1obnCJg-Bt3M5SOIKE8PSJvoHaCjNl", "client-root"); // TODO: Improve crawling algorithm (make it on-demand) and start from true root
-//        getSubfoldersSingleThread(root, driveService);
-
-//        ExecutorService threadPool = Executors.newFixedThreadPool(5);
-//        getSubfoldersRecursive(root, driveService, threadPool);
-//        threadPool.awaitTermination(1, TimeUnit.MINUTES);   // TODO: Make sure this terminates properly, ie. THE ENTIRE remote filesystem has been crawled
-
-
-//        FileWriter writer = new FileWriter(mapFile.toFile());
-//        new Gson().toJson(root, DirectoryMap.class, new JsonWriter(writer));
-//        writer.close();
-    }
-
     // FIXME: Gotta find a way to distribute search, waiting until entire filesystem is crawled, without going over limit.
 //    private void getSubfoldersRecursive(DirectoryMap directoryMap, Drive drive, ExecutorService threadPool) throws ExecutionException, InterruptedException {
 //        Objects.requireNonNull(directoryMap, "DirectoryMap may not be null");
