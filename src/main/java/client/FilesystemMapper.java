@@ -47,48 +47,36 @@ public class FilesystemMapper {
         this.mappingMap = buildMappingMap(this.mapRoot);
     }
 
-    public Path mapToLocal(Path remotePath) {
-        // TODO: Use map to get local directory. No Path needed, just String of last remote folder
-        return null;
-//        // Walk through map, fetching any missing paths in the middle
-//        DirectoryMap remoteDir = mapRoot;
-//        List<String> localDirs = new ArrayList<>(); // Does NOT include root name intentionally
-//        for(Path subdirId : remotePath) {
-//            DirectoryMap nextDir = remoteDir.getSubdirById(subdirId.getFileName().toString()).orElseGet(() -> {
-//                try {
-//                    // TODO take advantage of this remote request, register it in the map (though it would be weird to have all folder IDs without having them mapped already...)
-//                    File currentRemoteDir = new RemoteExplorer(driveService).findById(subdirId.getFileName().toString());
-//                    return new DirectoryMap();
-//                } catch (IOException e) {
-//                    logger.error("Couldn't map remote path '{}' to local, specifically in the '{}' part: {}", remotePath, subdirId, e.getStackTrace());
-//                    System.exit(1);
-//                }
-//                return null;
-//            });
-//            localDirs.add(remoteDir.getName());
-//        }
-//        return Paths.get(mapRoot.getName(), localDirs.toArray(new String[0]));
+    /**
+     * Get the local path of a remote folder, identified by its ID.
+     *
+     * @param remoteId  The remote folder's ID.
+     * @return          The matching local path, or {@code null} if there is no mapping for the specified remote ID.
+     */
+    public Path getLocalPath(String remoteId) {
+        DirectoryMap mapping = mappingMap.get(remoteId);
+        if (mapping == null) {
+            return null;
+        }
+        return mapping.getLocalPath();
     }
 
-//    /**
-//     * Map a path of directory names (can be local or remote) to remote directory IDs.
-//     *
-//     * @param namedPath         Named path, eg. "a/b/c"
-//     * @return                  The corresponding remote path, eg. "id-1/id-2/id-3"
-//     * @throws NoSuchElementException   When the specified path does not exist in the remote
-//     * @throws IOException              See {@link com.google.api.client.googleapis.services.AbstractGoogleClientRequest#execute()}
-//     */
-//    public Path mapToIds(Path namedPath) throws IOException {
-//        DirectoryMap currentRemoteDir = mapRoot;
-//        List<String> pathSections = new ArrayList<>();
-//        for(Path localSubdir : namedPath) {
-//            String localSubdirName = localSubdir.getFileName().toString();
-//            File remoteDir = new RemoteExplorer(driveService).findFoldersByName(localSubdirName, currentRemoteDir.getRemoteId()).stream().findFirst().orElseThrow(NoSuchElementException::new);
-//            pathSections.add(remoteDir.getId());
-//            currentRemoteDir = new DirectoryMap(remoteDir);
-//        }
-//        return Paths.get("root", pathSections.toArray(new String[0]));
-//    }
+    /**
+     * Get the remote ID of the specified local folder, identified by its absolute path.
+     * @param localPath Local directory path. If not absolute, is made absolute for searching.
+     * @return          The ID of the mapped remote folder, or {@code null} if not mapped.
+     */
+    public String getRemoteId(Path localPath) {
+        if (!localPath.isAbsolute()) {
+            localPath = localPath.toAbsolutePath();
+        }
+        for(DirectoryMap mapping : mappingMap.values()) {
+            if (mapping.getLocalPath().equals(localPath)) {
+                return mapping.getRemoteId();
+            }
+        }
+        return null;
+    }
 
     public void crawlRemote() throws Exception {
         // Start with an empty tree, loaded from the specified JSON file
@@ -239,8 +227,8 @@ public class FilesystemMapper {
     }
 
     /**
-     * Recursively navigate through a directory mapping tree and build a map mapping remote directory IDs to directory
-     * mappings for easier access later.
+     * Navigate through a directory mapping tree and build a map mapping remote directory IDs to directory mappings for
+     * easier access later.
      *
      * @param root  The root mapping
      * @return      The equivalent map.
