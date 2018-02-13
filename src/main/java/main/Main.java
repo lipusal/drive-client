@@ -22,7 +22,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.*;
-import java.nio.file.Paths;
 import java.util.Collections;
 import java.util.List;
 import java.util.Scanner;
@@ -134,7 +133,7 @@ public class Main {
         Drive driveService = getDriveService();
 
         boolean runConfig;
-        if (true || !Config.getInstance().isConfigured()) { // TODO NOW remove this
+        if (!Config.getInstance().isConfigured()) {
             System.out.print("Configuration file not found. ");
             runConfig = true;
         } else {
@@ -158,23 +157,20 @@ public class Main {
         /* *********************************************************************************************************
          *                                  SYNC LOCAL AND REMOTE FILE FILESYSTEMS
          * ********************************************************************************************************/
-        // Map local folders <=> remote folders
-        FilesystemMapper mapper = null;
-        try {
-            mapper = new FilesystemMapper(Paths.get(Config.getInstance().getConfig().get("mapFile").getAsString()).toAbsolutePath(), driveService);
-            if (!runConfig) {
-                mapper.syncWithConfig();
-            }
-            System.out.println(mapper);
-        } catch (Exception e) {
-            e.printStackTrace();
-            System.exit(1);
+        // Mappings of local folders <=> remote folders
+        FilesystemMapper globalMapper;
+        if (!runConfig) {
+            // If configuration is not run, global mapper is not instanced.
+            globalMapper = new FilesystemMapper(Config.getInstance().getMapFilePath(), driveService);
+            Config.getInstance().setGlobalMapper(globalMapper);
+        } else {
+            globalMapper = Config.getInstance().getGlobalMapper();
         }
         // Sync content
         System.out.println("Syncing...");
         logger.debug("Beginning sync");
-        for(String directoryId : Config.getInstance().getSyncedFolderIds()) {
-            new DirectorySyncer(mapper.getMapping(directoryId), driveService, mapper).sync();
+        for(String directoryId : Config.getInstance().getSyncedDirIds()) {
+            new DirectorySyncer(globalMapper.getMapping(directoryId), driveService, globalMapper).sync();
         }
         logger.debug("Sync complete!");
 
@@ -183,8 +179,8 @@ public class Main {
          *                                  WATCH AND UPLOAD LOCAL CHANGES
          * ********************************************************************************************************/
         System.out.println("Watching directories for changes");
-        logger.debug("Watching {} for changes", mapper.getLocalRoot());
-        LocalDirectoryWatcher watcher = new LocalDirectoryWatcher(mapper.getLocalRoot()/*, TODO: true*/);
+        logger.debug("Watching {} for changes", globalMapper.getLocalRoot());
+        LocalDirectoryWatcher watcher = new LocalDirectoryWatcher(globalMapper.getLocalRoot()/*, TODO: true*/);
         watcher.setCreatedListener(changedFile -> {
             try {
                 File createdFile = new FileCreator(driveService, changedFile).call();

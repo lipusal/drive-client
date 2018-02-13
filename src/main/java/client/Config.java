@@ -109,12 +109,12 @@ public class Config {
             System.exit(1);
         }
 
-        // 5) Sync global mapper with new synced directories
+        // 5) Persist map changes because we probably made at least some new mappings
         try {
-            globalMapper.syncWithConfig();
+            globalMapper.writeToFile();
         } catch (IOException e) {
-            System.err.println("Couldn't complete configuration (internal error, this is not your fault). Aborting.");
-            logger.error("Couldn't sync global filesystem mapper with config", e);
+            System.err.println("Couldn't save configuration. Aborting.");
+            logger.error("Couldn't write map to file after configuring", e);
             System.exit(1);
         }
 
@@ -175,7 +175,7 @@ public class Config {
             List<File> rootDirs = remoteExplorer.getSubdirs(getRemoteRoot());
 
             // Take the opportunity to map any new root directories that were not previously mapped
-            List<String> syncedDirIds = getSyncedFolderIds();
+            List<String> syncedDirIds = getSyncedDirIds();
             rootDirs.forEach(rootDir -> {
                 String remoteId = rootDir.getId();
                 if (!globalMapper.isMapped(remoteId)) {
@@ -186,19 +186,19 @@ public class Config {
                 }
             });
 
-            // Set sync flag for mappings of synced directories
-            for (DirectoryMapping syncedDir : getSyncedMappings()) {// TODO: Set all other mappings to sync: false?
-                syncedDir.setSync(true);
-                // Get updated subdir data of every synced directory (deep)
-                remoteExplorer.deepGetSubdirs(syncedDir.getRemoteId(), fileFileSimpleEntry -> {
-                    DirectoryMapping parentMapping = globalMapper.getMapping(fileFileSimpleEntry.getKey().getId());
-                    File remoteSubdir = fileFileSimpleEntry.getValue();
-                    if (!globalMapper.isMapped(remoteSubdir.getId())) {
-                        // New remote directory, add to mappings
-                        globalMapper.mapSubdir(remoteSubdir.getId(), Paths.get(parentMapping.getLocalPath().toString(), remoteSubdir.getName()), parentMapping);
-                        globalMapper.getMapping(remoteSubdir.getId()).setSync(true);
+            for (String dirId : getSyncedDirIds()) {    // TODO: Set all other mappings to sync: false?
+                if (!globalMapper.isMapped(dirId)) {
+                    // This happens when we sync a non-root directory, and we delete the mappings file. Get the path to root first.
+                    logger.debug("Directory " + dirId + " is marked for sync but not mapped. Assuming this is because it's a non-root directory. Building path to directory and mapping.");
+                    List<File> missingDirs = remoteExplorer.getPathToRoot(dirId, getRemoteRoot());
+                    for (int i = missingDirs.size() - 1; i >= 0; i--) {
+                        DirectoryMapping parent = i == missingDirs.size() - 1 ? globalMapper.getRootMapping() : globalMapper.getMapping(missingDirs.get(i + 1).getId());
+                        File currentDir = missingDirs.get(i);
+                        globalMapper.mapSubdir(Paths.get(parent.getLocalPath().toString(), currentDir.getName()), currentDir.getId(), parent);
                     }
-                });
+                }
+                DirectoryMapping syncedDir = globalMapper.getMapping(dirId);
+                deepSetSynced(syncedDir, true, remoteExplorer); // TODO: Spread this over various threads?
             }
         } catch (IOException e) {
             System.err.println("Couldn't get your Drive folders: " + e.getMessage() + ". Exiting.");
@@ -211,62 +211,49 @@ public class Config {
         DirectoryChooser chooser = new DirectoryChooser(globalMapper.getRootMapping());
         do {
             System.out.println("Selected folders:");
-            System.out.println(chooser.toString());
+            System.out.println(chooser.tree());
             boolean validEntry;
-            int toggledDir = -1;
             do {
-                // TODO NOW
-                //System.out.format("Enter a number to toggle whether to sync the corresponding directory. Enter \"*\" to toggle all, \"q\" to confirm [%d-%d,*q] ", 1, rootDirs.size());    // TODO: Allow ranges, etc.
+                System.out.print("Enter a number to toggle whether to sync the corresponding directory: ");    // TODO: Allow ranges, etc.
                 String entry = scanner.nextLine();
                 switch (entry) {
                     case "q":
                         done = true;
                         validEntry = true;
                         break;
-                    case "*":
-                        validEntry = true;
-                        break;
+//                    case "*":
+//                        validEntry = true;
+//                        break;
                     default:
                         try {
-                            toggledDir = Integer.parseInt(entry) - 1;
-                            validEntry = false; // TODO NOW toggledDir >= 0 && toggledDir < rootDirs.size();
-                        } catch (NumberFormatException e) {
+                            DirectoryMapping matchedDir = chooser.mappingFromInput(entry);
+                            boolean isSynced = !matchedDir.isSynced();
+                            if (isSynced && !matchedDir.areSubdirsUpToDate()) {
+                                System.out.println("Getting all subdirectories of " + matchedDir.getName() + "...");
+                            }
+                            deepSetSynced(matchedDir, isSynced, remoteExplorer);
+                            validEntry = true;
+                        } catch (NoSuchElementException | NumberFormatException e) {
+                            System.out.printf("Invalid entry: %s\n", e.getMessage());
                             validEntry = false;
-                        }
-                        if (!validEntry) {
-                            System.out.println("Invalid entry");
+                        } catch (IOException e) {
+                            logger.error("Couldn't deep get subdirectories of selected directory, invalidating entry", e);
+                            System.out.println("Couldn't get subdirectories of selected directory, please try again");
+                            validEntry = false;
                         }
                         break;
                 }
             } while (!validEntry);
-            if (!done) {
-                // Toggle selected dirs
-                // TODO NOW
-//                for (int i = 0; i < rootDirs.size(); i++) {
-//                    if (toggledDir == -1 || toggledDir == i) {
-//                        File selectedDir = rootDirs.get(i);
-//                        if (selectedDirs.contains(selectedDir)) {
-//                            selectedDirs.remove(selectedDir);
-//                        } else {
-//                            selectedDirs.add(selectedDir);
-//                        }
-//                    }
-//                }
-            }
         } while (!done);
 
-        // TODO NOW
-//        logger.debug("Marking {} directories for sync (overwriting any previous configured directories)", selectedDirs.size());
-//        JsonArray syncedDirs = new JsonArray(selectedDirs.size());
-//        selectedDirs.forEach(file -> syncedDirs.add(file.getId()));
-//        configuration.add("sync", syncedDirs);
+        logger.debug("Marked {} directories for sync", getSyncedDirIds().size());
     }
 
     public JsonObject getConfig() {
         return configuration;
     }
 
-    public List<String> getSyncedFolderIds() {
+    public List<String> getSyncedDirIds() {
         return Util.streamFromIterator(configuration.getAsJsonArray("sync").iterator()).map(JsonElement::getAsString).collect(Collectors.toList());
     }
 
@@ -289,6 +276,18 @@ public class Config {
         return (remoteRoot == null || remoteRoot.isJsonNull()) ? null : remoteRoot.getAsString();
     }
 
+    public FilesystemMapper getGlobalMapper() {
+        return globalMapper;
+    }
+
+    public void setGlobalMapper(FilesystemMapper globalMapper) {
+        if (this.globalMapper != null) {
+            throw new IllegalStateException("Global mapper is already set, can't change once set");
+        } else {
+            this.globalMapper = globalMapper;
+        }
+    }
+
     private void setRemoteRootId(String remoteRootId) {
         configuration.add("remoteRoot", new JsonPrimitive(remoteRootId));
     }
@@ -304,11 +303,50 @@ public class Config {
     }
 
     private List<DirectoryMapping> getSyncedMappings() {
-        if (!configuration.get("sync").isJsonArray()) {
-            return Collections.emptyList();
-        }
         List<DirectoryMapping> result = new LinkedList<>();
         configuration.getAsJsonArray("sync").forEach(remoteId -> result.add(globalMapper.getMapping(remoteId.getAsString())));
         return result;
+    }
+
+    /**
+     * Set a directory's synced flag. Also set all its mapped subdirectories' flags to the same as the parent directory.
+     * For every directory ({@code mapping} and its subdirs), add or remove them from the configured synced directories
+     * as necessary.  If {@code synced == true && mapping.areSubdirsUpToDate() == false}, uses the specified remote
+     * explorer to refresh subdir structure and set the synced flag.
+     *
+     * @param mapping           The mapping of the directory whose flag to toggle.
+     * @param synced            Whether the mapping is synced.
+     * @param remoteExplorer    Remote explorer with which to explore remote structure.
+     */
+    private void deepSetSynced(DirectoryMapping mapping, boolean synced, RemoteExplorer remoteExplorer) throws IOException {
+        JsonArray syncedDirs = configuration.getAsJsonArray("sync");
+        if (synced) {
+            if (!mapping.areSubdirsUpToDate()) {
+                // Update subdirectories, mapping as we walk subdirs
+                remoteExplorer.deepGetSubdirs(mapping.getRemoteId(), fileFileSimpleEntry -> {
+                    DirectoryMapping parentMapping = globalMapper.getMapping(fileFileSimpleEntry.getKey().getId());
+                    File remoteSubdir = fileFileSimpleEntry.getValue();
+                    if (!globalMapper.isMapped(remoteSubdir.getId())) {
+                        // New remote directory, add to mappings
+                        globalMapper.mapSubdir(remoteSubdir.getId(), Paths.get(parentMapping.getLocalPath().toString(), remoteSubdir.getName()), parentMapping);
+                    }
+                });
+            }
+            // Now up to date, set flags
+            mapping.deepWalkSelfAndSubdirs(m2 -> {
+                m2.setSubdirsUpToDate(true);
+                m2.setSync(true);
+                JsonElement elementJson = new JsonPrimitive(m2.getRemoteId());
+                if (!syncedDirs.contains(elementJson)) {
+                    syncedDirs.add(elementJson);
+                }
+            });
+        } else {
+            // Not syncing any new directories, should be enough to clear flag on all mapped subdirs.
+            mapping.deepWalkSelfAndSubdirs(m2 -> {
+                m2.setSync(false);
+                syncedDirs.remove(new JsonPrimitive(m2.getRemoteId())); // Idempotent, no need to check whether exists
+            });
+        }
     }
 }

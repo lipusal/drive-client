@@ -24,7 +24,7 @@ public class FilesystemMapper {
 
     private final Path mapFile;
     private final Drive driveService;
-    private final DirectoryMapping mapRoot;
+    private final DirectoryMapping rootMapping;
     private final Map<String, DirectoryMapping> mappingMap;
     private final Path localRoot;
     private final String remoteRoot;
@@ -42,21 +42,20 @@ public class FilesystemMapper {
             logger.warn("Map file {} does not exist, using data from config", mapFile);
             // Map file, local and remote roots defined in config
             this.mapFile = Config.getInstance().getMapFilePath();
-            this.mapRoot = getRootMappingFromConfig();
-            this.localRoot = this.mapRoot.getLocalPath();
-            this.remoteRoot = this.mapRoot.getRemoteId();
+            this.rootMapping = getRootMappingFromConfig();
+            this.localRoot = this.rootMapping.getLocalPath();
+            this.remoteRoot = this.rootMapping.getRemoteId();
             // Skeletal mappings map
             this.mappingMap = new HashMap<>();
-            mappingMap.put(remoteRoot, mapRoot);
+            mappingMap.put(remoteRoot, rootMapping);
             // Load and map the rest of the synced folders
-            syncWithConfig();
         } else {
             logger.debug("Loading map file {}", mapFile);
             this.mapFile = mapFile;
-            this.mapRoot = parseMapFile(this.mapFile);
-            this.localRoot = this.mapRoot.getLocalPath();
-            this.remoteRoot = this.mapRoot.getRemoteId();
-            this.mappingMap = buildMappingMap(this.mapRoot);
+            this.rootMapping = parseMapFile(this.mapFile);
+            this.localRoot = this.rootMapping.getLocalPath();
+            this.remoteRoot = this.rootMapping.getRemoteId();
+            this.mappingMap = buildMappingMap(this.rootMapping);
         }
     }
 
@@ -113,7 +112,7 @@ public class FilesystemMapper {
     }
 
     public DirectoryMapping getRootMapping() {
-        return mapRoot;
+        return rootMapping;
     }
 
     /**
@@ -215,13 +214,13 @@ public class FilesystemMapper {
     }
 
     /**
-     * Get synced directories from {@link Config#getSyncedFolderIds()}, map them if missing, and set synced to false for
+     * Get synced directories from {@link Config#getSyncedDirIds()}, map them if missing, and set synced to false for
      * every directory not marked for sync.
      */
-    public void syncWithConfig() throws IOException {
+    private void syncWithConfig() throws IOException {
         logger.debug("Syncing maps with config");
         mappingMap.values().forEach(mapping -> mapping.setSync(false));     // Clear all sync flags
-        for (String remoteId : Config.getInstance().getSyncedFolderIds()) {
+        for (String remoteId : Config.getInstance().getSyncedDirIds()) {
             Optional<String> parentId = getParents(remoteId).map(parents -> parents.get(0));
             if (parentId.isPresent()) {
                 DirectoryMapping parent = getMapping(parentId.get());
@@ -302,7 +301,7 @@ public class FilesystemMapper {
             parseDirectoryRecursive(subdir, map);
         });
         // Remove all explored subdirs
-        entriesToRemove.forEach(map::remove);
+//        entriesToRemove.forEach(map::remove);
     }
 
     /**
@@ -334,7 +333,7 @@ public class FilesystemMapper {
 
     @Override
     public String toString() {
-        return mapRoot.tree();
+        return rootMapping.tree();
     }
 
     /**
@@ -349,7 +348,7 @@ public class FilesystemMapper {
         JsonObject result = new JsonObject();
         result.add("root", new JsonPrimitive(getRemoteRoot()));
         result.add(getRemoteRoot(), mapEntry("root", getLocalRoot(), true));
-        buildMapJsonRecursive(mapRoot, result);
+        buildMapJsonRecursive(rootMapping, result);
 
         Writer w = new FileWriter(mapFile.toFile());
         new GsonBuilder().serializeNulls().create().toJson(result, w);

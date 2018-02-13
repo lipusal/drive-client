@@ -5,6 +5,7 @@ import org.slf4j.LoggerFactory;
 
 import java.nio.file.Path;
 import java.util.*;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 /**
@@ -17,7 +18,13 @@ public class DirectoryMapping {
     private Path localPath;
     private final List<DirectoryMapping> subdirs = new ArrayList<>();
     private final Logger logger = LoggerFactory.getLogger(getClass());
-    private boolean sync = false;
+    private boolean sync;
+
+    /**
+     * Whether <strong>ALL</strong> subdirectories (ie. transitive directories as well) have been fetched from
+     * remote, and subdirectory info can be considered up to date.
+     */
+    private boolean subdirsUpToDate = false;
 
     public DirectoryMapping(String remoteId, Path localPath, boolean sync, DirectoryMapping... subdirs) {
         this.remoteId = remoteId;
@@ -40,6 +47,20 @@ public class DirectoryMapping {
 
     public List<DirectoryMapping> getSubdirs() {
         return subdirs;
+    }
+
+    /**
+     * @see #subdirsUpToDate
+     */
+    public boolean areSubdirsUpToDate() {
+        return subdirsUpToDate;
+    }
+
+    /**
+     * @see #subdirsUpToDate
+     */
+    public void setSubdirsUpToDate(boolean subdirsUpToDate) {
+        this.subdirsUpToDate = subdirsUpToDate;
     }
 
     public boolean isSynced() {
@@ -66,15 +87,38 @@ public class DirectoryMapping {
         return subdirs.stream().filter(directoryMapping -> directoryMapping.remoteId.equals(id)).findFirst();
     }
 
-    @Override
-    public String toString() {
-        return getName() + " (" + remoteId + ")";
-    }
-
     public String tree() {
         StringBuilder result = new StringBuilder(this.toString()).append("\n");
         subdirs.forEach(subdir -> result.append("\t").append(subdir.tree()));
         return result.toString();
+    }
+
+    /**
+     * Recursively walks down all subdirs in a DFS fashion, passing each walked subdirectory to a specified {@link Consumer}.
+     *
+     * @param consumer  Consumer to accept each walked subdirectory.
+     */
+    public void deepWalkSubdirs(Consumer<DirectoryMapping> consumer) {
+        // DFS
+        subdirs.forEach(subdir -> {
+            consumer.accept(subdir);
+            subdir.deepWalkSubdirs(consumer);
+        });
+    }
+
+    /**
+     * Equivalent to {@link #deepWalkSubdirs(Consumer)}, but also includes self.
+     *
+     * @param consumer Consumer to accept each walked directory.
+     */
+    public void deepWalkSelfAndSubdirs(Consumer<DirectoryMapping> consumer) {
+        consumer.accept(this);
+        deepWalkSubdirs(consumer);
+    }
+
+    @Override
+    public String toString() {
+        return getName() + " (" + remoteId + ")";
     }
 
     @Override

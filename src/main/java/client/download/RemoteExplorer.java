@@ -5,10 +5,7 @@ import com.google.api.services.drive.Drive;
 import com.google.api.services.drive.model.File;
 
 import java.io.IOException;
-import java.util.AbstractMap;
-import java.util.Collections;
-import java.util.List;
-import java.util.Optional;
+import java.util.*;
 import java.util.function.Consumer;
 
 public class RemoteExplorer {
@@ -78,13 +75,33 @@ public class RemoteExplorer {
     }
 
     /**
+     * Walks the path from the specified directory to root, returning the directories encountered on the way.
+     *
+     * @param fileId        ID of the file to start from.
+     * @param rootId        Root ID, to know when to stop.
+     * @return              The encountered directories, bottom-up (ie. index 0 has the specified file, index
+     *                      {@code size()-1} has the closest directory to root).
+     * @throws IOException
+     */
+    public List<File> getPathToRoot(String fileId, String rootId) throws IOException {
+        List<File> result = new ArrayList<>();
+        File currentFile = findById(fileId);
+        while (!currentFile.getId().equals(rootId)) {
+            result.add(currentFile);
+            final File finalCurrentFile = currentFile;
+            currentFile = getParentFiles(currentFile.getId()).map(list -> list.get(0)).orElseThrow(() -> new IllegalStateException("Found no parents for " + finalCurrentFile.getName() + " on path to root"));
+        }
+        return result;
+    }
+
+    /**
      * Get the contents of the specified directory.
      *
      * @param directoryId ID of the remote directory.
      * @return  The files.
      */
     public List<File> getContents(String directoryId) throws IOException {
-        return drive.files().list().setQ("'" + directoryId + "' in parents")
+        return drive.files().list().setQ("'" + directoryId + "' in parents and trashed = false")
                 .setFields("files")     // Want complete file metadata
                 .execute().getFiles();
     }
@@ -98,5 +115,18 @@ public class RemoteExplorer {
      */
     public Optional<List<String>> getParents(String remoteId) throws IOException {
         return Optional.ofNullable(findById(remoteId).getParents());
+    }
+
+    public Optional<List<File>> getParentFiles(String remoteId) throws IOException {
+        File remote = findById(remoteId);
+        if (remote.getParents() != null) {
+            List<File> parents = new ArrayList<>();
+            for (String parentId : remote.getParents()) {
+                parents.add(findById(parentId));
+            }
+            return Optional.of(parents);
+        } else {
+            return Optional.empty();
+        }
     }
 }
