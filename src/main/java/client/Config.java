@@ -97,6 +97,7 @@ public class Config {
         }
 
         // 3) Set which remote directories to sync
+        // FIXME NOW: Some directories are marked to sync even though I set them not to, eg. Game Saves/PCSX2/
         setSyncedRemoteDirs(driveService);
 
         // 4) Save config
