@@ -3,6 +3,7 @@ package client;
 import client.download.RemoteExplorer;
 import com.google.api.services.drive.Drive;
 import com.google.api.services.drive.model.File;
+import com.google.api.services.drive.model.FileList;
 import com.google.gson.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -12,6 +13,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.*;
+import java.util.stream.Collectors;
 
 /**
  * Folders in Drive are exclusively identified with IDs, and every folder's parents are merely another property of the
@@ -58,6 +60,58 @@ public class FilesystemMapper {
         }
     }
 
+    /**
+     * Crawl all of the remote directories to build a representation of the remote structure locally.
+     */
+    public void crawlRemoteDirs() throws IOException {
+        // TODO: Use remoteExplorer#deepGetSubdirs
+        List<File> remoteDirs = new LinkedList<>();
+
+        String pageToken = null;
+        logger.debug("Crawling remote folders...");
+
+        remoteDirs = loadCrawlResults();
+        if (remoteDirs == null) {
+            do {
+                FileList result = driveService.files().list()
+                        .setQ("mimeType='application/vnd.google-apps.folder'")
+                        .setSpaces("drive")
+                        .setFields("nextPageToken,files(id,name,parents)")
+                        .setPageToken(pageToken)
+                        .setPageSize(Config.MAX_PAGE_SIZE)
+                        .execute();
+                remoteDirs.addAll(result.getFiles());
+                pageToken = result.getNextPageToken();
+                logger.debug("Fetched {} folders, continuing with next page", result.getFiles().size());
+            } while (pageToken != null);
+        } else {
+            logger.debug("Loaded crawl results from file");
+        }
+
+        logger.debug("Crawl complete, replicating directory structure of {} directories", remoteDirs.size());
+
+//        saveCrawlResult(remoteDirs);
+
+        Deque<DirectoryMapping> parentsToSee = new LinkedList<>();
+        parentsToSee.addFirst(getRootMapping());    // Start at root
+        while (!remoteDirs.isEmpty()) {
+            // Pop next dir
+            DirectoryMapping currentParent = parentsToSee.pop();
+            // Get its subdirs
+            List<File> remoteSubdirs = remoteDirs.stream().filter(file -> file.getParents() != null && file.getParents().contains(currentParent.getRemoteId())).collect(Collectors.toList());
+            remoteSubdirs.forEach(subdir -> {
+                // Map it
+                mapSubdir(Paths.get(currentParent.getLocalPath().toString(), subdir.getName()), subdir.getId(), currentParent);
+                // Push newly created mapping as parent to process
+                parentsToSee.push(getMapping(subdir.getId()));
+            });
+            // TODO make the following line faster
+            remoteSubdirs.forEach(remoteDirs::remove);
+            //remoteDirs.removeAll(remoteSubdirs);    // Much slower, see https://coderanch.com/t/203041/java/Big-performance-hog-Collection-removeAll and https://stackoverflow.com/questions/28671903/hashset-removeall-method-is-surprisingly-slow
+        }
+        writeToFile();
+    }
+
     public DirectoryMapping getRootMapping() {
         return mapRoot;
     }
@@ -70,6 +124,16 @@ public class FilesystemMapper {
      */
     public DirectoryMapping getMapping(String remoteId) {
         return mappingMap.get(remoteId);
+    }
+
+    /**
+     * Get whether a remote file is mapped.
+     *
+     * @param remoteId  The remote file ID.
+     * @return          Whether there exists a mapping for the specified remote file.
+     */
+    public boolean isMapped(String remoteId) {
+        return mappingMap.containsKey(remoteId);
     }
 
     /**
@@ -87,6 +151,16 @@ public class FilesystemMapper {
             }
         }
         return null;
+    }
+
+    /**
+     * Get whether a local file is mapped.
+     *
+     * @param localPath     The local file path.
+     * @return              Whether there exists a mapping for the specified local file.
+     */
+    public boolean isMapped(Path localPath) {
+        return getMapping(localPath) != null;
     }
 
     /**
@@ -182,7 +256,7 @@ public class FilesystemMapper {
         String remoteRootId = map.get("root").getAsString();
         // Set local root
         Path localRoot = Paths.get(map.getAsJsonObject(remoteRootId).get("localPath").getAsString()).toAbsolutePath();
-        DirectoryMapping result = new DirectoryMapping(remoteRootId, localRoot, false);
+        DirectoryMapping result = new DirectoryMapping(remoteRootId, localRoot, true);
         // Recursively parse the rest of the map
         parseDirectoryRecursive(result, map);
         return result;
@@ -416,5 +490,60 @@ public class FilesystemMapper {
             result = remoteExplorer.getParents(remoteId);
         }
         return result;
+    }
+
+    /**
+     * Debugging function to save a crawling result because remote crawling takes a long time.
+     *
+     * @param remoteDirs
+     * @throws IOException
+     */
+    private void saveCrawlResult(List<File> remoteDirs) throws IOException {
+        try (FileWriter writer = new FileWriter("remotes.json")) {
+            JsonObject json = new JsonObject();
+            remoteDirs.forEach(dir -> {
+                JsonObject dirJson = new JsonObject();
+
+                List<String> parents = Optional.ofNullable(dir.getParents()).orElse(Collections.emptyList());
+                JsonArray parentsJson = new JsonArray(parents.size());
+                parents.forEach(parentsJson::add);
+                dirJson.add("parents", parentsJson);
+
+                dirJson.add("id", new JsonPrimitive(dir.getId()));
+                dirJson.add("name", new JsonPrimitive(dir.getName()));
+
+                json.add(dir.getId(), dirJson);
+            });
+            Gson g = new Gson();
+            g.toJson(json, writer);
+        }
+    }
+
+    /**
+     * Debugging method to load results of a previous crawling generated by {@link #saveCrawlResult(List)}.
+     *
+     * @return
+     * @throws IOException
+     */
+    private List<File> loadCrawlResults() throws IOException {
+        try (FileReader reader = new FileReader("remotes.json")) {
+            Gson g = new Gson();
+            JsonObject json = g.fromJson(reader, JsonObject.class);
+
+            return json.entrySet().stream().map(entry -> {
+                File dir = new File();
+                dir.setId(entry.getKey());
+
+                JsonObject dirJson = entry.getValue().getAsJsonObject();
+
+                dir.setParents(Util.streamFromIterator(dirJson.getAsJsonArray("parents").iterator()).map(JsonElement::getAsString).collect(Collectors.toList()));
+                dir.setId(dirJson.get("id").getAsString());
+                dir.setName(dirJson.get("name").getAsString());
+                return dir;
+            }).collect(Collectors.toList());
+
+        } catch (FileNotFoundException e) {
+            return null;
+        }
     }
 }

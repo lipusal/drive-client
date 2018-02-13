@@ -118,6 +118,12 @@ public class Main {
         return new Drive.Builder(
                 HTTP_TRANSPORT, JSON_FACTORY, credential)
                 .setApplicationName(APPLICATION_NAME)
+                // Increase timeout, https://stackoverflow.com/a/23717324/2333689
+                .setHttpRequestInitializer(request -> {
+                    credential.initialize(request);
+                    request.setConnectTimeout(Config.TIMEOUT);
+                    request.setReadTimeout(Config.TIMEOUT);
+                })
                 .build();
     }
 
@@ -128,7 +134,7 @@ public class Main {
         Drive driveService = getDriveService();
 
         boolean runConfig;
-        if (!Config.getInstance().isConfigured()) {
+        if (true || !Config.getInstance().isConfigured()) { // TODO NOW remove this
             System.out.print("Configuration file not found. ");
             runConfig = true;
         } else {

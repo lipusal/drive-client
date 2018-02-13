@@ -5,9 +5,11 @@ import com.google.api.services.drive.Drive;
 import com.google.api.services.drive.model.File;
 
 import java.io.IOException;
+import java.util.AbstractMap;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
+import java.util.function.Consumer;
 
 public class RemoteExplorer {
     private final Drive drive;
@@ -53,6 +55,26 @@ public class RemoteExplorer {
         return drive.files().list().setQ("'" + parentDirId + "' in parents and mimeType='application/vnd.google-apps.folder'")
                 .setFields("files")     // Want complete file metadata
                 .execute().getFiles();
+    }
+
+    /**
+     * Recursively navigates as deep as possible down from the given parent directory, passing current subdirectory and
+     * current parent to each encountered directory.
+     *
+     * @param parentDirId   Where to start.
+     * @param consumer      A consumer who accepts the current subdir as a first argument, and current parent as second argument.
+     */
+    public void deepGetSubdirs(String parentDirId, Consumer<AbstractMap.SimpleEntry<File, File>> consumer) throws IOException {
+        deepGetSubdirsRecursive(findById(parentDirId), consumer);
+    }
+
+    private void deepGetSubdirsRecursive(File currentDir, Consumer<AbstractMap.SimpleEntry<File, File>> consumer) throws IOException {
+        // DFS
+        List<File> subdirs = getSubdirs(currentDir.getId());
+        for (File subdir : subdirs) {   // Lambda doesn't work without a try/catch here
+            consumer.accept(new AbstractMap.SimpleEntry<>(currentDir, subdir));
+            deepGetSubdirsRecursive(subdir, consumer);
+        }
     }
 
     /**

@@ -12,20 +12,21 @@ import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Scanner;
+import java.util.*;
 import java.util.stream.Collectors;
 
 public class Config {
     public static final String DIRECTORY_MIME_TYPE = "application/vnd.google-apps.folder";
     public static final long MAX_DIRECT_DOWNLOAD_SIZE = 5000000;    // 5MB TODO move this to config file
+    public static final int MAX_PAGE_SIZE = 1000;
+    public static final int TIMEOUT = 1000 * 60;    // 1 minute
 
     private static Config instance;
 
     private static final Path CONFIG_FILE = Paths.get("config.json").toAbsolutePath();
     private static final Path DEFAULT_CONFIG_FILE = Paths.get("config.default.json").toAbsolutePath();
     private JsonObject configuration;
+    private FilesystemMapper globalMapper;
     private Logger logger = LoggerFactory.getLogger(getClass());
 
     public static Config getInstance() {
@@ -78,16 +79,42 @@ public class Config {
                 System.exit(1);
             }
         }
-        // Configure
+        /* ************************
+         *        CONFIGURE
+         * ***********************/
+        // 1) Set local root
         setLocalRoot();
+
+        // 2) Instance global filesystem mapper to manage remote FS
+        if (globalMapper == null) {
+            try {
+                globalMapper = new FilesystemMapper(getMapFilePath(), driveService);
+            } catch (Exception e) {
+                System.err.println("Couldn't complete configuration (internal error, this is not your fault). Aborting.");
+                logger.error("Couldn't instance global filesystem mapper", e);
+                System.exit(1);
+            }
+        }
+
+        // 3) Set which remote directories to sync
         setSyncedRemoteDirs(driveService);
-        // Save config
+
+        // 4) Save config
         try {
             logger.debug("Saving updated config to {}", CONFIG_FILE);
             writeToFile();
         } catch (Exception e) {
             System.err.println("Couldn't save configuration, exiting.");
             logger.error("Couldn't save config", e);
+            System.exit(1);
+        }
+
+        // 5) Sync global mapper with new synced directories
+        try {
+            globalMapper.syncWithConfig();
+        } catch (IOException e) {
+            System.err.println("Couldn't complete configuration (internal error, this is not your fault). Aborting.");
+            logger.error("Couldn't sync global filesystem mapper with config", e);
             System.exit(1);
         }
 
@@ -132,36 +159,64 @@ public class Config {
     }
 
     /**
-     * Set which remote directories will be synced.  Connects to Drive, allows the user to pick which folders to sync,
-     * and updates configuration
+     * Set which remote directories will be synced.  Connect to Drive, allow the user to pick which folders to sync,
+     * and update configuration.
      *
      * @param driveService  The Drive service to fetch remote directories with.
      */
     private void setSyncedRemoteDirs(Drive driveService) {
         System.out.println("Loading your Drive folders...");
 
-        List<File> rootDirs = null;
+        RemoteExplorer remoteExplorer = new RemoteExplorer(driveService);
         try {
-            rootDirs = new RemoteExplorer(driveService).getSubdirs(getRemoteRoot());
+//            globalMapper.crawlRemoteDirs();
+
+            // Get latest root directories
+            List<File> rootDirs = remoteExplorer.getSubdirs(getRemoteRoot());
+
+            // Take the opportunity to map any new root directories that were not previously mapped
+            List<String> syncedDirIds = getSyncedFolderIds();
+            rootDirs.forEach(rootDir -> {
+                String remoteId = rootDir.getId();
+                if (!globalMapper.isMapped(remoteId)) {
+                    Path localPath = Paths.get(getLocalRoot().toString(), rootDir.getName());
+                    boolean synced = syncedDirIds.contains(remoteId);
+                    globalMapper.mapSubdir(localPath, remoteId, globalMapper.getRootMapping());
+                    globalMapper.getMapping(remoteId).setSync(synced);
+                }
+            });
+
+            // Set sync flag for mappings of synced directories
+            for (DirectoryMapping syncedDir : getSyncedMappings()) {// TODO: Set all other mappings to sync: false?
+                syncedDir.setSync(true);
+                // Get updated subdir data of every synced directory (deep)
+                remoteExplorer.deepGetSubdirs(syncedDir.getRemoteId(), fileFileSimpleEntry -> {
+                    DirectoryMapping parentMapping = globalMapper.getMapping(fileFileSimpleEntry.getKey().getId());
+                    File remoteSubdir = fileFileSimpleEntry.getValue();
+                    if (!globalMapper.isMapped(remoteSubdir.getId())) {
+                        // New remote directory, add to mappings
+                        globalMapper.mapSubdir(remoteSubdir.getId(), Paths.get(parentMapping.getLocalPath().toString(), remoteSubdir.getName()), parentMapping);
+                        globalMapper.getMapping(remoteSubdir.getId()).setSync(true);
+                    }
+                });
+            }
         } catch (IOException e) {
             System.err.println("Couldn't get your Drive folders: " + e.getMessage() + ". Exiting.");
-            logger.error("Couldn't get remote folders in configuration", e);
+            logger.error("Couldn't crawl remote filesystem in configuration", e);
             System.exit(1);
         }
-        List<File> selectedDirs = getAlreadySelectedDirs(rootDirs);
+
         boolean done = false;
         Scanner scanner = new Scanner(System.in);
+        DirectoryChooser chooser = new DirectoryChooser(globalMapper.getRootMapping());
         do {
-            // TODO: Support subdir management
             System.out.println("Selected folders:");
-            for (int i = 0; i < rootDirs.size(); i++) {
-                File currentDir = rootDirs.get(i);
-                System.out.printf("[%s] %d - %s\n", selectedDirs.contains(currentDir) ? "X" : "", i+1, currentDir.getName());
-            }
+            System.out.println(chooser.toString());
             boolean validEntry;
             int toggledDir = -1;
             do {
-                System.out.format("Enter a number to toggle whether to sync the corresponding directory. Enter \"*\" to toggle all, \"q\" to confirm [%d-%d,*q] ", 1, rootDirs.size());    // TODO: Allow ranges, etc.
+                // TODO NOW
+                //System.out.format("Enter a number to toggle whether to sync the corresponding directory. Enter \"*\" to toggle all, \"q\" to confirm [%d-%d,*q] ", 1, rootDirs.size());    // TODO: Allow ranges, etc.
                 String entry = scanner.nextLine();
                 switch (entry) {
                     case "q":
@@ -174,7 +229,7 @@ public class Config {
                     default:
                         try {
                             toggledDir = Integer.parseInt(entry) - 1;
-                            validEntry = toggledDir >= 0 && toggledDir < rootDirs.size();
+                            validEntry = false; // TODO NOW toggledDir >= 0 && toggledDir < rootDirs.size();
                         } catch (NumberFormatException e) {
                             validEntry = false;
                         }
@@ -186,23 +241,25 @@ public class Config {
             } while (!validEntry);
             if (!done) {
                 // Toggle selected dirs
-                for (int i = 0; i < rootDirs.size(); i++) {
-                    if (toggledDir == -1 || toggledDir == i) {
-                        File selectedDir = rootDirs.get(i);
-                        if (selectedDirs.contains(selectedDir)) {
-                            selectedDirs.remove(selectedDir);
-                        } else {
-                            selectedDirs.add(selectedDir);
-                        }
-                    }
-                }
+                // TODO NOW
+//                for (int i = 0; i < rootDirs.size(); i++) {
+//                    if (toggledDir == -1 || toggledDir == i) {
+//                        File selectedDir = rootDirs.get(i);
+//                        if (selectedDirs.contains(selectedDir)) {
+//                            selectedDirs.remove(selectedDir);
+//                        } else {
+//                            selectedDirs.add(selectedDir);
+//                        }
+//                    }
+//                }
             }
         } while (!done);
 
-        logger.debug("Marking {} directories for sync (overwriting any previous configured directories)", selectedDirs.size());
-        JsonArray syncedDirs = new JsonArray(selectedDirs.size());
-        selectedDirs.forEach(file -> syncedDirs.add(file.getId()));
-        configuration.add("sync", syncedDirs);
+        // TODO NOW
+//        logger.debug("Marking {} directories for sync (overwriting any previous configured directories)", selectedDirs.size());
+//        JsonArray syncedDirs = new JsonArray(selectedDirs.size());
+//        selectedDirs.forEach(file -> syncedDirs.add(file.getId()));
+//        configuration.add("sync", syncedDirs);
     }
 
     public JsonObject getConfig() {
@@ -246,16 +303,12 @@ public class Config {
         configWriter.close();
     }
 
-    private List<File> getAlreadySelectedDirs(List<File> rootDirs) {
-        List<File> result = new ArrayList<>(rootDirs.size());
+    private List<DirectoryMapping> getSyncedMappings() {
         if (!configuration.get("sync").isJsonArray()) {
-            return result;
+            return Collections.emptyList();
         }
-        rootDirs.forEach(dir -> {
-            if (configuration.getAsJsonArray("sync").contains(new JsonPrimitive(dir.getId()))) {
-                result.add(dir);
-            }
-        });
+        List<DirectoryMapping> result = new LinkedList<>();
+        configuration.getAsJsonArray("sync").forEach(remoteId -> result.add(globalMapper.getMapping(remoteId.getAsString())));
         return result;
     }
 }
