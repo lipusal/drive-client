@@ -156,6 +156,9 @@ public class Main {
         FilesystemMapper mapper = null;
         try {
             mapper = new FilesystemMapper(Paths.get(Config.getInstance().getConfig().get("mapFile").getAsString()).toAbsolutePath(), driveService);
+            if (!runConfig) {
+                mapper.syncWithConfig();
+            }
             System.out.println(mapper);
         } catch (Exception e) {
             e.printStackTrace();

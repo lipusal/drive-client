@@ -213,6 +213,11 @@ public class Config {
         return Util.streamFromIterator(configuration.getAsJsonArray("sync").iterator()).map(JsonElement::getAsString).collect(Collectors.toList());
     }
 
+    /**
+     * Gets local root as an absolute path.
+     *
+     * @return The configured local root, as an absolute path.
+     */
     public Path getLocalRoot() {
         JsonElement localPath = configuration.get("localRoot");
         return localPath.isJsonNull() ? null : Paths.get(localPath.getAsString()).toAbsolutePath();

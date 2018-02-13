@@ -7,6 +7,7 @@ import com.google.api.services.drive.model.File;
 import java.io.IOException;
 import java.util.Collections;
 import java.util.List;
+import java.util.Optional;
 
 public class RemoteExplorer {
     private final Drive drive;
@@ -42,7 +43,7 @@ public class RemoteExplorer {
      * Find a file or folder with the specified ID.
      */
     public File findById(String fileOrFolderId) throws IOException {
-        return drive.files().get(fileOrFolderId).execute();
+        return drive.files().get(fileOrFolderId).setFields("*").execute();
     }
 
     /**
@@ -64,5 +65,16 @@ public class RemoteExplorer {
         return drive.files().list().setQ("'" + directoryId + "' in parents")
                 .setFields("files")     // Want complete file metadata
                 .execute().getFiles();
+    }
+
+    /**
+     * Fetch parents of the specified file.
+     *
+     * @param remoteId      The remote file ID.
+     * @return              The parents, or {@code null} for none.
+     * @throws IOException  On network I/O error.
+     */
+    public Optional<List<String>> getParents(String remoteId) throws IOException {
+        return Optional.ofNullable(findById(remoteId).getParents());
     }
 }
