@@ -124,7 +124,7 @@ public class FilesystemMapper {
             mapping.get().setLocalPath(localDir);
         } else {
             // Remote unmapped, add subdir to parent
-            DirectoryMapping newMapping = new DirectoryMapping(remoteId, localDir, false);
+            DirectoryMapping newMapping = new DirectoryMapping(remoteId, localDir, true);
             parentMapping.getSubdirs().add(newMapping);
             // Also add to mapping map
             mappingMap.put(remoteId, newMapping);

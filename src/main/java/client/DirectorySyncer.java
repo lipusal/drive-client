@@ -24,15 +24,17 @@ public class DirectorySyncer {
     private final DirectoryMapping directoryMapping;
     private final Drive driveService;
     private final RemoteExplorer remoteExplorer;
+    private final FilesystemMapper mapper;
     private final Logger logger = LoggerFactory.getLogger(getClass());
 
-    public DirectorySyncer(DirectoryMapping directoryMapping, Drive driveRemote/*, TODO connection pool to request upload/download*/) {
+    public DirectorySyncer(DirectoryMapping directoryMapping, Drive driveRemote, FilesystemMapper filesystemMapper/*, TODO connection pool to request upload/download*/) {
         Objects.requireNonNull(directoryMapping);
         Objects.requireNonNull(driveRemote);
 
         this.driveService = driveRemote;
         this.directoryMapping = directoryMapping;
         this.remoteExplorer = new RemoteExplorer(driveService);
+        this.mapper = filesystemMapper;
     }
 
     public void sync() throws IOException, GeneralSecurityException {
@@ -67,17 +69,32 @@ public class DirectorySyncer {
      * @throws IOException  On I/O errors when creating directories.
      */
     private void createLocalDirs(List<File> remoteDirs) throws IOException {
+        boolean newMappingsCreated = false;
         for(File dir : remoteDirs) {
-            Path localPath = Paths.get(directoryMapping.getLocalPath().toString(), dir.getName()).normalize();
+            // Try to fetch local path from a pre-existing mapping first
+            DirectoryMapping mapping = mapper.getMapping(dir.getId());
+            Path localPath;
+            if (mapping != null && mapping.getLocalPath() != null) {
+                localPath = mapping.getLocalPath();
+            } else {
+                // Not mapped, build local path and add to mappings
+                localPath = Paths.get(directoryMapping.getLocalPath().toString(), dir.getName()).normalize();
+                mapper.mapSubdir(localPath, dir.getId(), directoryMapping);
+                newMappingsCreated = true;
+            }
+
             if (!Files.exists(localPath)) {
                 logger.debug("Creating local directory {}, mapped to remote directory {}", localPath, dir.getId());
                 Files.createDirectories(localPath);
+
             } else if (!Files.isDirectory(localPath)) {
                 logger.error("Local file {} already exists, can't create a file of the same name (I think?). Aborting.", localPath);
                 throw new IllegalStateException("Can't create local directory " + localPath + ": A file of the same name already exists.");
             }
         }
-        // TODO NOW register mapping with FilesystemMapper
+        if (newMappingsCreated) {
+            mapper.writeToFile();
+        }
     }
 
     /**
@@ -91,6 +108,7 @@ public class DirectorySyncer {
             ZonedDateTime remoteLastModified = ZonedDateTime.parse(remoteFile.getModifiedTime().toStringRfc3339()),
             localLastModified = Files.exists(localPath) ? ZonedDateTime.parse(Files.getLastModifiedTime(localPath).toString()) : null;
 
+            //noinspection ConstantConditions, `localLastModified == null` <=> `!Files.exists(localPath)` and || is short-circuiting, will prevent calling `isAfter(null)`
             if (!Files.exists(localPath) || remoteLastModified.isAfter(localLastModified)) {
                 // TODO: Spread this over various threads (ie. executor service), use various channels per download, etc.
                 new FileDownloader(driveService, remoteFile, localPath).download();

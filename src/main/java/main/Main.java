@@ -168,7 +168,7 @@ public class Main {
         System.out.println("Syncing...");
         logger.debug("Beginning sync");
         for(String directoryId : Config.getInstance().getSyncedFolderIds()) {
-            new DirectorySyncer(mapper.getMapping(directoryId), driveService).sync();
+            new DirectorySyncer(mapper.getMapping(directoryId), driveService, mapper).sync();
         }
         logger.debug("Sync complete!");
 
