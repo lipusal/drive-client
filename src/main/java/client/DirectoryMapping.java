@@ -88,8 +88,17 @@ public class DirectoryMapping {
     }
 
     public String tree() {
-        StringBuilder result = new StringBuilder(this.toString()).append("\n");
-        subdirs.forEach(subdir -> result.append("\t").append(subdir.tree()));
+        return treeRecursive(0);
+    }
+
+    private String treeRecursive(int depth) {
+        // TODO: Do this iteratively with a Deque, to prevent instancing many StringBuilders
+        StringBuilder result = new StringBuilder();
+        for (int i = 0; i < depth; i++) {
+            result.append('\t');
+        }
+        result.append(this.toString()).append("\n");
+        subdirs.forEach(subdir -> result.append(subdir.treeRecursive(depth + 1)));
         return result.toString();
     }
 
