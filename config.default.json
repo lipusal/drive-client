@@ -2,7 +2,7 @@
   "mapFile": "map.json",
   "localRoot": null,
   "remoteRoot": null,
-  "sync": null,
+  "sync": [],
   "ignore": [
     ".git/.*"
   ]
