@@ -307,7 +307,7 @@ public class FilesystemMapper {
             // Add them to current directoryMap subdir list
             JsonObject mapSubdir = entry.getValue().getAsJsonObject();
             Path localPath = Paths.get(mapSubdir.getAsJsonPrimitive("localPath").getAsString()).toAbsolutePath();
-            DirectoryMapping subdir = new DirectoryMapping(entry.getKey(), localPath, false);
+            DirectoryMapping subdir = new DirectoryMapping(entry.getKey(), localPath, mapSubdir.get("sync").getAsBoolean());
             currentRoot.getSubdirs().add(subdir);
             entriesToRemove.add(entry.getKey());
             // Recursively go deeper (DFS)

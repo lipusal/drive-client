@@ -97,7 +97,6 @@ public class Config {
         }
 
         // 3) Set which remote directories to sync
-        // FIXME NOW: Some directories are marked to sync even though I set them not to, eg. Game Saves/PCSX2/
         setSyncedRemoteDirs(driveService);
 
         // 4) Save config
@@ -198,8 +197,31 @@ public class Config {
                     }
                 }
                 DirectoryMapping syncedDir = globalMapper.getMapping(dirId);
-                // FIXME NOW don't override synced
-                deepSetSynced(syncedDir, true, remoteExplorer); // TODO: Spread this over various threads?
+                if (!syncedDir.areSubdirsUpToDate()) {
+                    // Walk down directory tree
+                    remoteExplorer.deepGetSubdirs(syncedDir.getRemoteId(), fileFileSimpleEntry -> {
+                        File remoteSubdir = fileFileSimpleEntry.getValue();
+                        DirectoryMapping parentMapping = globalMapper.getMapping(fileFileSimpleEntry.getKey().getId()),
+                                mapping = globalMapper.getMapping(remoteSubdir.getId());
+                        JsonArray syncedDirs = configuration.getAsJsonArray("sync");
+                        if (mapping == null) {
+                            // Missing, map (set synced to true)
+                            mapping = new DirectoryMapping(remoteSubdir.getId(), Paths.get(parentMapping.getLocalPath().toString(), remoteSubdir.getName()), true);
+                            globalMapper.mapSubdir(mapping, parentMapping);
+                        }
+                        mapping.setSubdirsUpToDate(true);   // Since we will eventually go all the way down the tree
+                        // Add or remove subdirs from synced list as necessary
+                        JsonElement elementJson = new JsonPrimitive(mapping.getRemoteId());
+                        if (mapping.isSynced()) {
+                            if (!syncedDirs.contains(elementJson)) {
+                                syncedDirs.add(elementJson);
+                            }
+                        } else {
+                            syncedDirs.remove(elementJson); // Idempotent, no need to check if contains
+                        }
+                    });
+                    syncedDir.setSubdirsUpToDate(true);
+                }
             }
         } catch (IOException e) {
             System.err.println("Couldn't get your Drive folders: " + e.getMessage() + ". Exiting.");
