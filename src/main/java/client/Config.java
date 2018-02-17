@@ -169,60 +169,8 @@ public class Config {
 
         RemoteExplorer remoteExplorer = new RemoteExplorer(driveService);
         try {
-//            globalMapper.crawlRemoteDirs();
-
-            // Get latest root directories
-            List<File> rootDirs = remoteExplorer.getSubdirs(getRemoteRoot());
-
-            // Take the opportunity to map any new root directories that were not previously mapped
-            List<String> syncedDirIds = getSyncedDirIds();
-            rootDirs.forEach(rootDir -> {
-                String remoteId = rootDir.getId();
-                if (!globalMapper.isMapped(remoteId)) {
-                    Path localPath = Paths.get(getLocalRoot().toString(), rootDir.getName());
-                    boolean synced = syncedDirIds.contains(remoteId);
-                    globalMapper.mapSubdir(localPath, remoteId, synced, globalMapper.getRootMapping());
-                }
-            });
-
-            for (String dirId : getSyncedDirIds()) {    // TODO: Set all other mappings to sync: false?
-                if (!globalMapper.isMapped(dirId)) {
-                    // This happens when we sync a non-root directory, and we delete the mappings file. Get the path to root first.
-                    logger.debug("Directory " + dirId + " is marked for sync but not mapped. Assuming this is because it's a non-root directory. Building path to directory and mapping.");
-                    List<File> missingDirs = remoteExplorer.getPathToRoot(dirId, getRemoteRoot());
-                    for (int i = missingDirs.size() - 1; i >= 0; i--) {
-                        DirectoryMapping parent = i == missingDirs.size() - 1 ? globalMapper.getRootMapping() : globalMapper.getMapping(missingDirs.get(i + 1).getId());
-                        File currentDir = missingDirs.get(i);
-                        globalMapper.mapSubdir(Paths.get(parent.getLocalPath().toString(), currentDir.getName()), currentDir.getId(), true, parent);
-                    }
-                }
-                DirectoryMapping syncedDir = globalMapper.getMapping(dirId);
-                if (!syncedDir.areSubdirsUpToDate()) {
-                    // Walk down directory tree
-                    remoteExplorer.deepGetSubdirs(syncedDir.getRemoteId(), fileFileSimpleEntry -> {
-                        File remoteSubdir = fileFileSimpleEntry.getValue();
-                        DirectoryMapping parentMapping = globalMapper.getMapping(fileFileSimpleEntry.getKey().getId()),
-                                mapping = globalMapper.getMapping(remoteSubdir.getId());
-                        JsonArray syncedDirs = configuration.getAsJsonArray("sync");
-                        if (mapping == null) {
-                            // Missing, map (set synced to true)
-                            mapping = new DirectoryMapping(remoteSubdir.getId(), Paths.get(parentMapping.getLocalPath().toString(), remoteSubdir.getName()), true);
-                            globalMapper.mapSubdir(mapping, parentMapping);
-                        }
-                        mapping.setSubdirsUpToDate(true);   // Since we will eventually go all the way down the tree
-                        // Add or remove subdirs from synced list as necessary
-                        JsonElement elementJson = new JsonPrimitive(mapping.getRemoteId());
-                        if (mapping.isSynced()) {
-                            if (!syncedDirs.contains(elementJson)) {
-                                syncedDirs.add(elementJson);
-                            }
-                        } else {
-                            syncedDirs.remove(elementJson); // Idempotent, no need to check if contains
-                        }
-                    });
-                    syncedDir.setSubdirsUpToDate(true);
-                }
-            }
+            updateRootDirectories(remoteExplorer);
+            udpateSyncedDirectories(remoteExplorer);
         } catch (IOException e) {
             System.err.println("Couldn't get your Drive folders: " + e.getMessage() + ". Exiting.");
             logger.error("Couldn't crawl remote filesystem in configuration", e);
@@ -237,7 +185,7 @@ public class Config {
             System.out.println(chooser.tree());
             boolean validEntry;
             do {
-                System.out.print("Enter a number to toggle whether to sync the corresponding directory: ");    // TODO: Allow ranges, etc.
+                System.out.print("Enter a number to toggle whether to sync the corresponding directory (q to end): ");    // TODO: Allow ranges, etc.
                 String entry = scanner.nextLine();
                 switch (entry) {
                     case "q":
@@ -270,6 +218,79 @@ public class Config {
         } while (!done);
 
         logger.debug("Marked {} directories for sync", getSyncedDirIds().size());
+    }
+
+    /**
+     * Fetch the latest info about root directories, mapping any unmapped directories.
+     *
+     * @param remoteExplorer    Remote explorer to get root directories with.
+     * @throws IOException      On I/O errors when fetching root dirs.
+     */
+    private void updateRootDirectories(RemoteExplorer remoteExplorer) throws IOException {
+        // Fetch latest info about root directories
+        List<File> rootDirs = remoteExplorer.getSubdirs(getRemoteRoot());
+
+        // Map any new root directories that were not previously mapped
+        List<String> syncedDirIds = getSyncedDirIds();
+        rootDirs.forEach(rootDir -> {
+            String remoteId = rootDir.getId();
+            if (!globalMapper.isMapped(remoteId)) {
+                Path localPath = Paths.get(getLocalRoot().toString(), rootDir.getName());
+                boolean synced = syncedDirIds.contains(remoteId);
+                globalMapper.mapSubdir(localPath, remoteId, synced, globalMapper.getRootMapping());
+            }
+        });
+    }
+
+    /**
+     * Loop over {@link #getSyncedDirIds()}, walking down the remote filesystem for every synced directory. While walking
+     * down, map any unmapped subdirectories.  Sets all synced directories (and all their subdirectories) with subdirs
+     * up to date (ie. calling {@link DirectoryMapping#areSubdirsUpToDate()} will return {@code true}).
+     *
+     * @param remoteExplorer    Remote explorer.
+     * @throws IOException      On I/O errors when exploring.
+     */
+    private void udpateSyncedDirectories(RemoteExplorer remoteExplorer) throws IOException {
+        JsonArray syncedDirsRaw = configuration.getAsJsonArray("sync");
+        for (String dirId : getSyncedDirIds()) {
+            // Handle edge case
+            if (!globalMapper.isMapped(dirId)) {
+                // This happens when we sync a non-root directory, and we delete the mappings file. Get the path to root first.
+                logger.warn("Directory " + dirId + " is marked for sync but not mapped. Assuming this is because it's a non-root directory. Building path to directory and mapping.");
+                List<File> missingDirs = remoteExplorer.getPathToRoot(dirId, getRemoteRoot());
+                for (int i = missingDirs.size() - 1; i >= 0; i--) {
+                    DirectoryMapping parent = i == missingDirs.size() - 1 ? globalMapper.getRootMapping() : globalMapper.getMapping(missingDirs.get(i + 1).getId());
+                    File currentDir = missingDirs.get(i);
+                    globalMapper.mapSubdir(Paths.get(parent.getLocalPath().toString(), currentDir.getName()), currentDir.getId(), true, parent);
+                }
+            }
+
+            DirectoryMapping syncedDir = globalMapper.getMapping(dirId);
+            if (!syncedDir.areSubdirsUpToDate()) {
+                // Walk down directory tree, mapping any new directories we come across
+                remoteExplorer.deepGetSubdirs(syncedDir.getRemoteId(), fileFileSimpleEntry -> {
+                    File remoteSubdir = fileFileSimpleEntry.getValue();
+                    DirectoryMapping parentMapping = globalMapper.getMapping(fileFileSimpleEntry.getKey().getId()),
+                            mapping = globalMapper.getMapping(remoteSubdir.getId());
+                    if (mapping == null) {
+                        // Unmapped directory, map (set synced to true)
+                        mapping = new DirectoryMapping(remoteSubdir.getId(), Paths.get(parentMapping.getLocalPath().toString(), remoteSubdir.getName()), true);
+                        globalMapper.mapSubdir(mapping, parentMapping);
+                    }
+                    mapping.setSubdirsUpToDate(true);   // Since we will eventually go all the way down the tree
+                    // Add or remove subdirs from synced list as necessary
+                    JsonElement elementJson = new JsonPrimitive(mapping.getRemoteId());
+                    if (mapping.isSynced()) {
+                        if (!syncedDirsRaw.contains(elementJson)) {
+                            syncedDirsRaw.add(elementJson);
+                        }
+                    } else {
+                        syncedDirsRaw.remove(elementJson); // Idempotent, no need to check if contains
+                    }
+                });
+                syncedDir.setSubdirsUpToDate(true);
+            }
+        }
     }
 
     public JsonObject getConfig() {
