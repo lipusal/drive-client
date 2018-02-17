@@ -100,7 +100,7 @@ public class FilesystemMapper {
             List<File> remoteSubdirs = remoteDirs.stream().filter(file -> file.getParents() != null && file.getParents().contains(currentParent.getRemoteId())).collect(Collectors.toList());
             remoteSubdirs.forEach(subdir -> {
                 // Map it
-                mapSubdir(Paths.get(currentParent.getLocalPath().toString(), subdir.getName()), subdir.getId(), currentParent);
+                mapSubdir(Paths.get(currentParent.getLocalPath().toString(), subdir.getName()), subdir.getId(), false, currentParent);
                 // Push newly created mapping as parent to process
                 parentsToSee.push(getMapping(subdir.getId()));
             });
@@ -181,36 +181,50 @@ public class FilesystemMapper {
         return Optional.ofNullable(getMapping(localPath)).map(DirectoryMapping::getRemoteId).orElse(null);
     }
 
-    public void mapSubdir(Path localDir, String remoteId, DirectoryMapping parentMapping) {
+    /**
+     * Adds a directory mapping to the registered mappings, under the specified parent mapping.
+     *
+     * @param subdir New sub-mapping.
+     * @param parent {@code subdir}'s parent directory.
+     */
+    public void mapSubdir(DirectoryMapping subdir, DirectoryMapping parent) {
         // TODO: Allow mapping files too, rather than just directories?
         // Validation
-        Objects.requireNonNull(localDir);
-        Objects.requireNonNull(remoteId);
-        Objects.requireNonNull(parentMapping);
-        if (!mappingMap.containsValue(parentMapping)) {
+        Objects.requireNonNull(subdir);
+        Objects.requireNonNull(parent);
+        if (!mappingMap.containsValue(parent)) {
             throw new IllegalArgumentException("Supplied parent mapping is not registered, must supply a registered parent mapping");
         }
-
-        Optional<DirectoryMapping> mapping = parentMapping.getSubdirById(remoteId);
-        if (mapping.isPresent()) {
-            // Remote unchanged, update local path
-            mapping.get().setLocalPath(localDir);
-        } else {
-            // Remote unmapped, add subdir to parent
-            DirectoryMapping newMapping = new DirectoryMapping(remoteId, localDir, true);
-            parentMapping.getSubdirs().add(newMapping);
-            // Also add to mapping map
-            mappingMap.put(remoteId, newMapping);
+        // FIXME: I don't think the following will ever be true, since mappings' `equals` considers local paths, which will not match. Consider searching by remote ID.
+        if (mappingMap.containsValue(subdir) && !parent.getSubdirs().contains(subdir)) {
+            throw new UnsupportedOperationException("Remapping an existing subdirectory to a different parent is not currently supported. Attempted to remap " + subdir.getLocalPath() + " under " + parent.getLocalPath());
         }
-        logger.debug("Mapped {} <=> {}", localDir, remoteId);
+        // Delete existing mapping if present
+        Optional<DirectoryMapping> mapping = parent.getSubdirById(subdir.getRemoteId());
+        if (mapping.isPresent()) {
+            parent.getSubdirs().remove(subdir);
+            logger.debug("Removed existing submapping {} <=> {}", subdir.getLocalPath(), subdir.getRemoteId());
+        }
+        // Add new mapping
+        parent.getSubdirs().add(subdir);
+        // Also add to mapping map (should replace existing mapping if present)
+        mappingMap.put(subdir.getRemoteId(), subdir);
+        logger.debug("Mapped {} <=> {}", subdir.getLocalPath(), subdir.getRemoteId());
     }
 
     /**
-     * Convenience method. Calls {@code map(localPath, remoteDir, parentMapping)}.
-     * @see #mapSubdir(Path, String, DirectoryMapping)
+     * Convenience method. Calls {@link #mapSubdir(DirectoryMapping, DirectoryMapping)} with the provided data.
      */
-    public void mapSubdir(String remoteDir, Path localPath, DirectoryMapping parentMapping) {
-        mapSubdir(localPath, remoteDir, parentMapping);
+    public void mapSubdir(String remoteDir, Path localPath, boolean sync, DirectoryMapping parentMapping) {
+        mapSubdir(new DirectoryMapping(remoteDir, localPath, sync), parentMapping);
+
+    }
+
+    /**
+     * Convenience method. Calls {@link #mapSubdir(String, Path, boolean, DirectoryMapping)}.
+     */
+    public void mapSubdir(Path localDir, String remoteId, boolean synced, DirectoryMapping parentMapping) {
+        mapSubdir(remoteId, localDir, synced, parentMapping);
     }
 
     /**
@@ -224,8 +238,7 @@ public class FilesystemMapper {
             Optional<String> parentId = getParents(remoteId).map(parents -> parents.get(0));
             if (parentId.isPresent()) {
                 DirectoryMapping parent = getMapping(parentId.get());
-                mapSubdir(buildLocalPath(remoteId), remoteId, parent);
-                getMapping(remoteId).setSync(true); // Set sync to true for new mapping
+                mapSubdir(buildLocalPath(remoteId), remoteId, true, parent);
             } else {
                 buildParentMappings(remoteId);
             }
@@ -363,8 +376,7 @@ public class FilesystemMapper {
      */
     private void buildMapJsonRecursive(DirectoryMapping mapping, JsonObject output) {
         mapping.getSubdirs().forEach(subMapping -> {
-            // TODO: Add sync property, and other data, to DirectoryMapping
-            output.add(subMapping.getRemoteId(), mapEntry(subMapping.getName(), subMapping.getLocalPath(), true, mapping.getRemoteId()));
+            output.add(subMapping.getRemoteId(), mapEntry(subMapping.getName(), subMapping.getLocalPath(), subMapping.isSynced(), mapping.getRemoteId()));
             buildMapJsonRecursive(subMapping, output);  // DFS
         });
     }
@@ -456,7 +468,7 @@ public class FilesystemMapper {
         }
         // Now register mappings bottom-up
         for (int i = mappings.size() - 1; i >= 1; i--) {
-            mapSubdir(mappings.get(i).getLocalPath(), mappings.get(i).getRemoteId(), mappings.get(i-1));
+            mapSubdir(mappings.get(i).getLocalPath(), mappings.get(i).getRemoteId(), mappings.get(i).isSynced(), mappings.get(i-1));
         }
     }
 

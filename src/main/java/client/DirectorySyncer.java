@@ -79,7 +79,7 @@ public class DirectorySyncer {
             } else {
                 // Not mapped, build local path and add to mappings
                 localPath = Paths.get(directoryMapping.getLocalPath().toString(), dir.getName()).normalize();
-                mapper.mapSubdir(localPath, dir.getId(), directoryMapping);
+                mapper.mapSubdir(localPath, dir.getId(), true, directoryMapping);
                 newMappingsCreated = true;
             }
 

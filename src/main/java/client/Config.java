@@ -182,8 +182,7 @@ public class Config {
                 if (!globalMapper.isMapped(remoteId)) {
                     Path localPath = Paths.get(getLocalRoot().toString(), rootDir.getName());
                     boolean synced = syncedDirIds.contains(remoteId);
-                    globalMapper.mapSubdir(localPath, remoteId, globalMapper.getRootMapping());
-                    globalMapper.getMapping(remoteId).setSync(synced);
+                    globalMapper.mapSubdir(localPath, remoteId, synced, globalMapper.getRootMapping());
                 }
             });
 
@@ -195,7 +194,7 @@ public class Config {
                     for (int i = missingDirs.size() - 1; i >= 0; i--) {
                         DirectoryMapping parent = i == missingDirs.size() - 1 ? globalMapper.getRootMapping() : globalMapper.getMapping(missingDirs.get(i + 1).getId());
                         File currentDir = missingDirs.get(i);
-                        globalMapper.mapSubdir(Paths.get(parent.getLocalPath().toString(), currentDir.getName()), currentDir.getId(), parent);
+                        globalMapper.mapSubdir(Paths.get(parent.getLocalPath().toString(), currentDir.getName()), currentDir.getId(), true, parent);
                     }
                 }
                 DirectoryMapping syncedDir = globalMapper.getMapping(dirId);
@@ -329,7 +328,7 @@ public class Config {
                     File remoteSubdir = fileFileSimpleEntry.getValue();
                     if (!globalMapper.isMapped(remoteSubdir.getId())) {
                         // New remote directory, add to mappings
-                        globalMapper.mapSubdir(remoteSubdir.getId(), Paths.get(parentMapping.getLocalPath().toString(), remoteSubdir.getName()), parentMapping);
+                        globalMapper.mapSubdir(remoteSubdir.getId(), Paths.get(parentMapping.getLocalPath().toString(), remoteSubdir.getName()), true, parentMapping);
                     }
                 });
             }
