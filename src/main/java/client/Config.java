@@ -198,6 +198,7 @@ public class Config {
                     }
                 }
                 DirectoryMapping syncedDir = globalMapper.getMapping(dirId);
+                // FIXME NOW don't override synced
                 deepSetSynced(syncedDir, true, remoteExplorer); // TODO: Spread this over various threads?
             }
         } catch (IOException e) {

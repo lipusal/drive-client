@@ -18,7 +18,7 @@ import java.util.Objects;
 import java.util.stream.Collectors;
 
 /**
- * Class in charge of synchronizing a local directory to a remote directory, and viceversa.
+ * Class in charge of synchronizing a local directory to a remote directory, and vice-versa.
  */
 public class DirectorySyncer {
     private final DirectoryMapping directoryMapping;
@@ -40,7 +40,7 @@ public class DirectorySyncer {
     public void sync() throws IOException, GeneralSecurityException {
         logger.debug("Syncing {} to {}", directoryMapping.getLocalPath(), directoryMapping.getRemoteId());
         List<File> remoteFiles = pull();
-        List<File> remoteDirs = remoteFiles.stream().filter(file -> file.getMimeType().equals(Config.DIRECTORY_MIME_TYPE)).collect(Collectors.toList());
+        List<File> remoteDirs = remoteFiles.stream().filter(Util::isDir).collect(Collectors.toList());
         remoteDirs.add(0, new File().setId(directoryMapping.getRemoteId()).setName("."));   // Make sure the containing directory exists first
         remoteFiles.removeAll(remoteDirs);  // Keep only files in remoteFiles
 
@@ -62,10 +62,11 @@ public class DirectorySyncer {
     }
 
     /**
-     * Creates any directories that don't exist locally out of the provided list of remote directories. Existence of
-     * local directories is made relative to {@link #directoryMapping}'s {@code localPath}.
+     * Creates any synced directories that don't exist locally out of the provided list of remote directories. Existence
+     * of local directories is made relative to {@link #directoryMapping}'s {@code localPath}.
      *
-     * @param remoteDirs    Remote directories to create locally.
+     * @param remoteDirs    Remote directories to create locally. Any pre-mapped directories that are set not to sync
+     *                      will NOT be created. Nonexistent mappings will be created and assumed to sync.
      * @throws IOException  On I/O errors when creating directories.
      */
     private void createLocalDirs(List<File> remoteDirs) throws IOException {
@@ -73,6 +74,10 @@ public class DirectorySyncer {
         for(File dir : remoteDirs) {
             // Try to fetch local path from a pre-existing mapping first
             DirectoryMapping mapping = mapper.getMapping(dir.getId());
+            if (mapping != null && !mapping.isSynced()) {
+                logger.debug("Not creating un-synced directory {}", mapping);
+                continue;
+            }
             Path localPath;
             if (mapping != null && mapping.getLocalPath() != null) {
                 localPath = mapping.getLocalPath();
@@ -100,7 +105,7 @@ public class DirectorySyncer {
     /**
      * Download missing or outdated remote files.
      *
-     * @param remoteFiles                   The remote files to download.
+     * @param remoteFiles   The remote files to download.
      */
     private void downloadFiles(List<File> remoteFiles) throws GeneralSecurityException, IOException {
         for(File remoteFile : remoteFiles) {
