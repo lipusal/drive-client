@@ -201,8 +201,11 @@ public class Config {
                             boolean isSynced = !matchedDir.isSynced();
                             if (isSynced && !matchedDir.areSubdirsUpToDate()) {
                                 System.out.println("Getting all subdirectories of " + matchedDir.getName() + "...");
+                                globalMapper.discover(matchedDir, isSynced);
+                                matchedDir.setSync(isSynced);
+                            } else {
+                                deepSetSynced(matchedDir, isSynced);
                             }
-                            deepSetSynced(matchedDir, isSynced, remoteExplorer);
                             validEntry = true;
                         } catch (NoSuchElementException | NumberFormatException e) {
                             System.out.printf("Invalid entry: %s\n", e.getMessage());
@@ -355,42 +358,25 @@ public class Config {
     /**
      * Set a directory's synced flag. Also set all its mapped subdirectories' flags to the same as the parent directory.
      * For every directory ({@code mapping} and its subdirs), add or remove them from the configured synced directories
-     * as necessary.  If {@code synced == true && mapping.areSubdirsUpToDate() == false}, uses the specified remote
-     * explorer to refresh subdir structure and set the synced flag.
+     * as necessary.
+     * <strong>NOTE:</strong> Assumes {@code mapping.areSubdirsUpToDate()}. Ie. will only set the flag for mapped
+     * directories.
      *
-     * @param mapping           The mapping of the directory whose flag to toggle.
-     * @param synced            Whether the mapping is synced.
-     * @param remoteExplorer    Remote explorer with which to explore remote structure.
+     *  @param mapping  The mapping of the directory whose flag to toggle.
+     * @param synced    Whether the mapping is synced.
      */
-    private void deepSetSynced(DirectoryMapping mapping, boolean synced, RemoteExplorer remoteExplorer) throws IOException {
+    private void deepSetSynced(DirectoryMapping mapping, boolean synced) {
         JsonArray syncedDirs = configuration.getAsJsonArray("sync");
-        if (synced) {
-            if (!mapping.areSubdirsUpToDate()) {
-                // Update subdirectories, mapping as we walk subdirs
-                remoteExplorer.deepGetSubdirs(mapping.getRemoteId(), fileFileSimpleEntry -> {
-                    DirectoryMapping parentMapping = globalMapper.getMapping(fileFileSimpleEntry.getKey().getId());
-                    File remoteSubdir = fileFileSimpleEntry.getValue();
-                    if (!globalMapper.isMapped(remoteSubdir.getId())) {
-                        // New remote directory, add to mappings
-                        globalMapper.mapSubdir(remoteSubdir.getId(), Paths.get(parentMapping.getLocalPath().toString(), remoteSubdir.getName()), true, parentMapping);
-                    }
-                });
-            }
-            // Now up to date, set flags
-            mapping.deepWalkSelfAndSubdirs(m2 -> {
-                m2.setSubdirsUpToDate(true);
-                m2.setSync(true);
+        mapping.deepWalkSelfAndSubdirs(m2 -> {
+            m2.setSync(synced);
+            if (synced) {
                 JsonElement elementJson = new JsonPrimitive(m2.getRemoteId());
                 if (!syncedDirs.contains(elementJson)) {
                     syncedDirs.add(elementJson);
                 }
-            });
-        } else {
-            // Not syncing any new directories, should be enough to clear flag on all mapped subdirs.
-            mapping.deepWalkSelfAndSubdirs(m2 -> {
-                m2.setSync(false);
+            } else {
                 syncedDirs.remove(new JsonPrimitive(m2.getRemoteId())); // Idempotent, no need to check whether exists
-            });
-        }
+            }
+        });
     }
 }

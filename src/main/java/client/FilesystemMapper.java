@@ -13,6 +13,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.*;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 /**
@@ -225,6 +226,52 @@ public class FilesystemMapper {
      */
     public void mapSubdir(Path localDir, String remoteId, boolean synced, DirectoryMapping parentMapping) {
         mapSubdir(remoteId, localDir, synced, parentMapping);
+    }
+
+    /**
+     * Walk down the remote filesystem from the specified remote directory all the way down to leaves, mapping any newly
+     * unmapped directories come across the discovery.
+     *
+     * @param mapping       The mapping to start from
+     * @param syncDirs      Whether to set directories as synced or not.
+     * @param consumer      (Optional) Consumer that receives every directory mapping (new or old)  come across.
+     * @throws IllegalArgumentException If {@code mapping} is not registered. Call {@link #mapSubdir(DirectoryMapping, DirectoryMapping)} to register.
+     * @throws IOException   On I/O errors while discovering the remote filesystem.
+     */
+    public void discover(DirectoryMapping mapping, boolean syncDirs, Consumer<DirectoryMapping> consumer) throws IOException {
+        if (!isMapped(mapping.getRemoteId())) {
+            throw new IllegalArgumentException("The specified mapping " + mapping + " is not registered. Must supply a registered mapping.");
+        }
+        remoteExplorer.deepGetSubdirs(mapping.getRemoteId(), fileFileSimpleEntry -> {
+            File remoteSubdir = fileFileSimpleEntry.getValue();
+            DirectoryMapping parentMapping = getMapping(fileFileSimpleEntry.getKey().getId()),
+                    currentMapping = getMapping(remoteSubdir.getId());
+            if (currentMapping == null) {
+                // Unmapped directory, map
+                currentMapping = new DirectoryMapping(remoteSubdir.getId(), Paths.get(parentMapping.getLocalPath().toString(), remoteSubdir.getName()), syncDirs);
+                mapSubdir(currentMapping, parentMapping);
+            }
+            currentMapping.setSubdirsUpToDate(true);   // Since we will eventually go all the way down the tree
+            if (consumer != null) {
+                consumer.accept(currentMapping);
+            }
+        });
+        mapping.setSubdirsUpToDate(syncDirs);
+    }
+
+    /**
+     * Convenience method. Calls {@link #discover(DirectoryMapping, boolean, Consumer)} with {@code mapping.isSynced()}
+     * as value for {@code syncNewDirs}. That is, uses the parent's mapping {@code synced} flag for all its subdirectories.
+     */
+    public void discover(DirectoryMapping mapping, Consumer<DirectoryMapping> consumer) throws IOException {
+        discover(mapping, mapping.isSynced(), consumer);
+    }
+
+    /**
+     * Convenience method. Calls {@link #discover(DirectoryMapping, boolean, Consumer)} with a {@code null} consumer.
+     */
+    public void discover(DirectoryMapping mapping, boolean syncNewDirs) throws IOException {
+        discover(mapping, syncNewDirs, null);
     }
 
     /**
