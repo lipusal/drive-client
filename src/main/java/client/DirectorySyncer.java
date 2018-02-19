@@ -1,6 +1,7 @@
 package client;
 
 import client.download.FileDownloader;
+import client.download.GoogleDocDownloader;
 import client.download.RemoteExplorer;
 import com.google.api.services.drive.Drive;
 import com.google.api.services.drive.model.File;
@@ -109,10 +110,6 @@ public class DirectorySyncer {
      */
     private void downloadFiles(List<File> remoteFiles) throws GeneralSecurityException, IOException {
         for(File remoteFile : remoteFiles) {
-            if (Util.isGoogleDoc(remoteFile)) {
-                logger.debug("Skipping Google document {}", remoteFile.getName());
-                continue;
-            }
             Path localPath = Paths.get(directoryMapping.getLocalPath().toString(), remoteFile.getName());
             ZonedDateTime remoteLastModified = ZonedDateTime.parse(remoteFile.getModifiedTime().toStringRfc3339()),
             localLastModified = Files.exists(localPath) ? ZonedDateTime.parse(Files.getLastModifiedTime(localPath).toString()) : null;
@@ -120,7 +117,11 @@ public class DirectorySyncer {
             //noinspection ConstantConditions, `localLastModified == null` <=> `!Files.exists(localPath)` and || is short-circuiting, will prevent calling `isAfter(null)`
             if (!Files.exists(localPath) || remoteLastModified.isAfter(localLastModified)) {
                 // TODO: Spread this over various threads (ie. executor service), use various channels per download, etc.
-                new FileDownloader(driveService, remoteFile, localPath).download();
+                if (Util.isGoogleDoc(remoteFile)) {
+                    new GoogleDocDownloader(driveService, remoteFile, localPath).download();
+                } else {
+                    new FileDownloader(driveService, remoteFile, localPath).download();
+                }
             } else {
                 logger.debug("{} already up to date", localPath);
             }
