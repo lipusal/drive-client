@@ -109,6 +109,10 @@ public class DirectorySyncer {
      */
     private void downloadFiles(List<File> remoteFiles) throws GeneralSecurityException, IOException {
         for(File remoteFile : remoteFiles) {
+            if (Util.isGoogleDoc(remoteFile)) {
+                logger.debug("Skipping Google document {}", remoteFile.getName());
+                continue;
+            }
             Path localPath = Paths.get(directoryMapping.getLocalPath().toString(), remoteFile.getName());
             ZonedDateTime remoteLastModified = ZonedDateTime.parse(remoteFile.getModifiedTime().toStringRfc3339()),
             localLastModified = Files.exists(localPath) ? ZonedDateTime.parse(Files.getLastModifiedTime(localPath).toString()) : null;

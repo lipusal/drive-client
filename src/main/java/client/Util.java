@@ -13,6 +13,10 @@ import java.util.stream.StreamSupport;
  */
 public class Util {
 
+    public static final String GOOGLE_DOC_MIME_TYPE = "application/vnd.google-apps.document",
+        GOOGLE_SLIDES_MIME_TYPE = "application/vnd.google-apps.presentation",
+        GOOGLE_SHEETS_MIME_TYPE = "application/vnd.google-apps.spreadsheet";
+
     /**
      * Create a stream from an iterator.
      *
@@ -32,5 +36,17 @@ public class Util {
      */
     public static boolean isDir(File remoteFile) {
         return remoteFile.getMimeType().equals(Config.DIRECTORY_MIME_TYPE);
+    }
+
+    /**
+     * Checks whether the specified file is a Google document (Docs, Sheets or Slides). These files are not downloadable,
+     * we must use their `webLink` if anything.
+     *
+     * @param remote    The remote file.
+     * @return          Whether the file is a Google document.
+     */
+    public static boolean isGoogleDoc(File remote) {
+        String mime = remote.getMimeType();
+        return mime.equals(GOOGLE_DOC_MIME_TYPE) || mime.equals(GOOGLE_SLIDES_MIME_TYPE) || mime.equals(GOOGLE_SHEETS_MIME_TYPE);
     }
 }
