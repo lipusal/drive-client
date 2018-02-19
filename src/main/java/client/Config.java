@@ -27,6 +27,7 @@ public class Config {
     private static final Path DEFAULT_CONFIG_FILE = Paths.get("config.default.json").toAbsolutePath();
     private JsonObject configuration;
     private FilesystemMapper globalMapper;
+    private FileIgnorer globalIgnorer;
     private Logger logger = LoggerFactory.getLogger(getClass());
 
     public static Config getInstance() {
@@ -95,11 +96,13 @@ public class Config {
                 System.exit(1);
             }
         }
+        // 3) Instance global file ignorer, which is relative to global root (defined in global mapper)
+        globalIgnorer = new FileIgnorer(globalMapper.getLocalRoot(), getGlobalIgnoreRules());
 
-        // 3) Set which remote directories to sync
+        // 4) Set which remote directories to sync
         setSyncedRemoteDirs(driveService);
 
-        // 4) Save config
+        // 5) Save config
         try {
             logger.debug("Saving updated config to {}", CONFIG_FILE);
             writeToFile();
@@ -109,7 +112,7 @@ public class Config {
             System.exit(1);
         }
 
-        // 5) Persist map changes because we probably made at least some new mappings
+        // 6) Persist map changes because we probably made at least some new mappings
         try {
             globalMapper.writeToFile();
         } catch (IOException e) {
@@ -201,7 +204,9 @@ public class Config {
                             boolean isSynced = !matchedDir.isSynced();
                             if (isSynced && !matchedDir.areSubdirsUpToDate()) {
                                 System.out.println("Getting all subdirectories of " + matchedDir.getName() + "...");
-                                globalMapper.discover(matchedDir, isSynced);
+                                // FIXME NOW global ignorer is not ignoring .git folder in test root
+                                // TODO NOW decide whether to use regexes or blobs
+                                globalMapper.discover(matchedDir, isSynced, globalIgnorer, null);
                                 matchedDir.setSync(isSynced);
                             } else {
                                 deepSetSynced(matchedDir, isSynced);
@@ -333,6 +338,14 @@ public class Config {
         } else {
             this.globalMapper = globalMapper;
         }
+    }
+
+    public FileIgnorer getGlobalIgnorer() {
+        return globalIgnorer;
+    }
+
+    public List<String> getGlobalIgnoreRules() {
+        return Util.streamFromIterator(configuration.getAsJsonArray("ignore").iterator()).map(JsonElement::getAsString).collect(Collectors.toList());
     }
 
     private void setRemoteRootId(String remoteRootId) {

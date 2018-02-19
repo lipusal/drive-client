@@ -4,6 +4,6 @@
   "remoteRoot": null,
   "sync": [],
   "ignore": [
-    ".git/.*"
+    "\\.git(\\/.*)?"
   ]
 }
