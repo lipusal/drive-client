@@ -111,6 +111,9 @@ public class DirectorySyncer {
     private void downloadFiles(List<File> remoteFiles) throws GeneralSecurityException, IOException {
         for(File remoteFile : remoteFiles) {
             Path localPath = Paths.get(directoryMapping.getLocalPath().toString(), remoteFile.getName());
+            if (Util.isGoogleDoc(remoteFile)) {
+                localPath = GoogleDocDownloader.addDocsExtension(remoteFile, localPath);
+            }
             ZonedDateTime remoteLastModified = ZonedDateTime.parse(remoteFile.getModifiedTime().toStringRfc3339()),
             localLastModified = Files.exists(localPath) ? ZonedDateTime.parse(Files.getLastModifiedTime(localPath).toString()) : null;
 

@@ -43,7 +43,7 @@ public class GoogleDocDownloader {
 
         this.drive = driveClient;
         this.remoteFile = remoteFile;
-        this.outputFile = addDocsExtension(outputFile.toAbsolutePath());
+        this.outputFile = addDocsExtension(remoteFile, outputFile.toAbsolutePath());
         this.progressListener = downloaderProgressListener;
 
         httpTransport = GoogleNetHttpTransport.newTrustedTransport();
@@ -78,7 +78,7 @@ public class GoogleDocDownloader {
      * @param originalPath The original path to add an extension to.
      * @return The {@code originalPath} with the corresponding extension added.
      */
-    private Path addDocsExtension(Path originalPath) {
+    public static Path addDocsExtension(File remoteFile, Path originalPath) {
         String docsExtension;
         switch (remoteFile.getMimeType()) {
             case Util.GOOGLE_DOC_MIME_TYPE:
