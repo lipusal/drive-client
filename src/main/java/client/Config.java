@@ -204,7 +204,6 @@ public class Config {
                             boolean isSynced = !matchedDir.isSynced();
                             if (isSynced && !matchedDir.areSubdirsUpToDate()) {
                                 System.out.println("Getting all subdirectories of " + matchedDir.getName() + "...");
-                                // FIXME NOW global ignorer is not ignoring .git folder in test root
                                 // TODO NOW decide whether to use regexes or blobs
                                 globalMapper.discover(matchedDir, isSynced, globalIgnorer, null);
                                 matchedDir.setSync(isSynced);
