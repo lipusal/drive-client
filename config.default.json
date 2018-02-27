@@ -4,6 +4,7 @@
   "remoteRoot": null,
   "sync": [],
   "ignore": [
-    "\\.git(\\/.*)?"
+    "\\.git(/.*)?",
+    "node_modules"
   ]
 }

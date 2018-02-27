@@ -27,8 +27,28 @@ public class FileIgnorer {
             throw new IllegalArgumentException(baseDir + " is not a directory");
         }
         this.rules = Arrays.stream(regexes).map(rule -> {
-            String regex = baseDir.toAbsolutePath().toString().replaceAll("\\\\", "\\\\\\\\") + baseDir.getFileSystem().getSeparator() + rule;  // Not using Paths.get() because a lot of regexes aren't valid filenames
-            return baseDir.getFileSystem().getPathMatcher("regex:" + regex);
+            StringBuilder regexBuilder = new StringBuilder();
+            // Match only under the specified base dir
+            regexBuilder.append("^").append(baseDir.toAbsolutePath().toString());
+            // Remove leading ^ if necessary
+            if (rule.startsWith("^")) {
+                rule = rule.replace("^", "");
+            }
+            if (!rule.startsWith("/")) {
+                // TODO: Make sure ignore rules use UNIX separator, rules starting with \\ for W4ndows separator will break
+                regexBuilder.append('/');
+            }
+            if (!rule.startsWith(".*")) {
+                regexBuilder.append(".*");
+            }
+            // Actual rule
+            regexBuilder.append(rule);
+            // Fix: Looks like `matches` implicitly wraps regexes with ^ and $, which we don't always want.
+            if (!rule.endsWith("$")) {
+                regexBuilder.append(".*$");
+            }
+
+            return baseDir.getFileSystem().getPathMatcher("regex:" + regexBuilder.toString());
         }).collect(Collectors.toList());
     }
 
@@ -59,8 +79,9 @@ public class FileIgnorer {
      * @return      Whether the path is ignored.
      */
     public boolean isIgnored(Path path) {
+        Path finalPath = path.toAbsolutePath().normalize();   // Normalize to remove ../../'s in the middle; otherwise this could result in paths outside root
         // TODO: Benchmark whether parallel stream helps here
-        return (this != Config.getInstance().getGlobalIgnorer() && isGloballyIgnored(path)) || rules.parallelStream().anyMatch(matcher -> matcher.matches(path.toAbsolutePath()));
+        return (this != Config.getInstance().getGlobalIgnorer() && isGloballyIgnored(path)) || rules.parallelStream().anyMatch(matcher -> matcher.matches(finalPath));
     }
 
     /**
