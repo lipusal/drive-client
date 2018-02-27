@@ -235,14 +235,15 @@ public class FilesystemMapper {
      * @param mapping       The mapping to start from
      * @param syncNewDirs   Whether to set new directories as synced or not.
      * @param consumer      (Optional) Consumer that receives every directory mapping (new or old)  come across.
+     * @param maxDepth      (Optional) Maximum depth to reach when discovering, relative to {@code mapping}. {@code -1} is infinity.
      * @throws IllegalArgumentException If {@code mapping} is not registered. Call {@link #mapSubdir(DirectoryMapping, DirectoryMapping)} to register.
      * @throws IOException   On I/O errors while discovering the remote filesystem.
      */
-    public void discover(DirectoryMapping mapping, boolean syncNewDirs, Consumer<DirectoryMapping> consumer) throws IOException {
+    public void discover(DirectoryMapping mapping, boolean syncNewDirs, Consumer<DirectoryMapping> consumer, int maxDepth) throws IOException {
         if (!isMapped(mapping.getRemoteId())) {
             throw new IllegalArgumentException("The specified mapping " + mapping + " is not registered. Must supply a registered mapping.");
         }
-        remoteExplorer.deepGetSubdirs(mapping.getRemoteId(), fileFileSimpleEntry -> {
+        remoteExplorer.deepGetSubdirs(mapping.getRemoteId(), maxDepth, fileFileSimpleEntry -> {
             File remoteSubdir = fileFileSimpleEntry.getValue();
             DirectoryMapping parentMapping = getMapping(fileFileSimpleEntry.getKey().getId()),
                     currentMapping = getMapping(remoteSubdir.getId());
@@ -260,33 +261,34 @@ public class FilesystemMapper {
     }
 
     /**
-     * Convenience method. Calls {@link #discover(DirectoryMapping, boolean, Consumer)} with {@code mapping.isSynced()}
+     * Convenience method. Calls {@link #discover(DirectoryMapping, boolean, Consumer, int)} with {@code mapping.isSynced()}
      * as value for {@code syncNewDirs}. That is, uses the parent's mapping {@code synced} flag for all its subdirectories.
      */
     public void discover(DirectoryMapping mapping, Consumer<DirectoryMapping> consumer) throws IOException {
-        discover(mapping, mapping.isSynced(), consumer);
+        discover(mapping, mapping.isSynced(), consumer, -1);
     }
 
     /**
-     * Convenience method. Calls {@link #discover(DirectoryMapping, boolean, Consumer)} with a {@code null} consumer.
+     * Convenience method. Calls {@link #discover(DirectoryMapping, boolean, Consumer, int)} with a {@code null} consumer.
      */
     public void discover(DirectoryMapping mapping, boolean syncNewDirs) throws IOException {
-        discover(mapping, syncNewDirs, null);
+        discover(mapping, syncNewDirs, null, -1);
     }
 
     /**
-     * Behaves like {@link #discover(DirectoryMapping, boolean, Consumer)}, but limits discovery of remote filesystem
+     * Behaves like {@link #discover(DirectoryMapping, boolean, Consumer, int)}, but limits discovery of remote filesystem
      * according to a specified file ignorer.
      *
      * @param mapping       The mapping to start from
      * @param syncNewDirs   Whether to set new directories as synced or not.
      * @param fileIgnorer   File ignorer to limit discovery of remote filesystem. <strong>NOTE:</strong> Ignored
      *                      remote files are set not to sync, regardless of {@code syncNewDirs}.
+     * @param maxDepth      (Optional) Maximum depth to reach while discovering. Call with {@code -1} for infinity.
      * @param consumer      (Optional) Consumer that receives every non-ignored directory mapping (new or old)  come across.
      * @throws IllegalArgumentException If {@code mapping} is not registered. Call {@link #mapSubdir(DirectoryMapping, DirectoryMapping)} to register.
      * @throws IOException   On I/O errors while discovering the remote filesystem.
      */
-    public void discover(DirectoryMapping mapping, boolean syncNewDirs, FileIgnorer fileIgnorer, Consumer<DirectoryMapping> consumer) throws IOException {
+    public void discover(DirectoryMapping mapping, boolean syncNewDirs, FileIgnorer fileIgnorer, int maxDepth, Consumer<DirectoryMapping> consumer) throws IOException {
         Objects.requireNonNull(mapping);
         Objects.requireNonNull(fileIgnorer);
         if (!isMapped(mapping.getRemoteId())) {
@@ -297,10 +299,13 @@ public class FilesystemMapper {
             return;
         }
 
-        Deque<DirectoryMapping> pendingFiles = new LinkedList<>();
-        pendingFiles.add(mapping);
+        Deque<Util.Tuple<DirectoryMapping, Integer>> pendingFiles = new LinkedList<>(); // Tuples of the form (directory, depth)
+        pendingFiles.add(new Util.Tuple<>(mapping, 0));
         while (!pendingFiles.isEmpty()) {
-            DirectoryMapping parent = pendingFiles.pop();
+            Util.Tuple<DirectoryMapping, Integer> tuple = pendingFiles.pop();
+            DirectoryMapping parent = tuple.getA();
+            int depth = tuple.getB();
+            boolean upToDate = true;
             // Get subdirs of current directory
             for (File remoteSubdir: remoteExplorer.getSubdirs(parent.getRemoteId())) {
                 DirectoryMapping subMapping = getMapping(remoteSubdir.getId());
@@ -314,16 +319,22 @@ public class FilesystemMapper {
                     if (consumer != null) {
                         consumer.accept(subMapping);
                     }
-                    pendingFiles.addLast(subMapping);
+                    if (depth < maxDepth) {
+                        pendingFiles.addLast(new Util.Tuple<>(subMapping, depth +1));
+                    } else {
+                        upToDate = false;
+                        // TODO NOW: Set false to all ancestors
+                        // TODO NOW: Move this to a different branch
+                    }
                 } else {
                     subMapping.setSync(false);
                     logger.debug("Not discovering remote subdirs of {} since it's ignored", subMapping);
+                    // TODO: Should we set `upToDate` to false here? We are not discovering the full tree, but the
+                    // TODO: like we will have seen everything. But if it's ignored, I think it makes sense to omit those
+                    // TODO: when considering the subdirs as up to date.
                 }
             }
-            // TODO: Is the following line correct? We may skip ignored subdirs further down the line, so it's not
-            // TODO: like we will have seen everything. But if it's ignored, I think it makes sense to omit those
-            // TODO: when considering the subdirs as up to date.
-            parent.setSubdirsUpToDate(true);   // Since we will eventually go all the way down the tree
+            parent.setSubdirsUpToDate(upToDate);   // Since we will eventually go all the way down the tree
         }
     }
 

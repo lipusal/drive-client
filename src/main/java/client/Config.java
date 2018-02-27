@@ -205,7 +205,7 @@ public class Config {
                             if (isSynced && !matchedDir.areSubdirsUpToDate()) {
                                 System.out.println("Getting all subdirectories of " + matchedDir.getName() + "...");
                                 // TODO NOW decide whether to use regexes or blobs
-                                globalMapper.discover(matchedDir, isSynced, globalIgnorer, null);
+                                globalMapper.discover(matchedDir, isSynced, globalIgnorer, 2, null);
                                 matchedDir.setSync(isSynced);
                             } else {
                                 deepSetSynced(matchedDir, isSynced);

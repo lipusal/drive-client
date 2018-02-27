@@ -55,22 +55,42 @@ public class RemoteExplorer {
     }
 
     /**
-     * Recursively navigates as deep as possible down from the given parent directory, passing current subdirectory and
-     * current parent to each encountered directory.
-     *
-     * @param parentDirId   Where to start.
-     * @param consumer      A consumer who accepts the current subdir as a first argument, and current parent as second argument.
+     * Convenience method. Calls {@link #deepGetSubdirs(String, int, Consumer)} with {@code maxDepth = -1} (infinity).
      */
     public void deepGetSubdirs(String parentDirId, Consumer<AbstractMap.SimpleEntry<File, File>> consumer) throws IOException {
-        deepGetSubdirsRecursive(findById(parentDirId), consumer);
+        deepGetSubdirs(parentDirId, -1, consumer);
     }
 
-    private void deepGetSubdirsRecursive(File currentDir, Consumer<AbstractMap.SimpleEntry<File, File>> consumer) throws IOException {
+    /**
+     * Recursively discovers the remote directory, up to {@code maxDepth} directories deep from {@code parentDirId},
+     * passing current subdirectory and current parent to each encountered directory.
+     *
+     * @param parentDirId   Where to start.
+     * @param maxDepth      Maximum depth to reach. Call with {@code -1} for infinity.
+     * @param consumer      A consumer who accepts the current subdir as a first argument, and current parent as second argument.
+     */
+    public void deepGetSubdirs(String parentDirId, int maxDepth, Consumer<AbstractMap.SimpleEntry<File, File>> consumer) throws IOException {
+        deepGetSubdirsRecursive(findById(parentDirId), consumer, maxDepth, 0);
+    }
+
+    /**
+     * Recursive navigator. Goes down the remote filesystem recursively, up to {@code maxDepth} directories down from the
+     * initial {@code currentDir} this was called with.
+     *
+     * @param currentDir    Current remote directory.
+     * @param consumer      Consumer to accept subdirectories of {@code currentDir}.
+     * @param maxDepth      Maximum depth to reach. Call with {@code -1} for infinity.
+     * @param currentDepth  Current depth. Call with {@code 0} initially.
+     * @throws IOException  On I/O errors while discovering.
+     */
+    private void deepGetSubdirsRecursive(File currentDir, Consumer<AbstractMap.SimpleEntry<File, File>> consumer, int maxDepth, int currentDepth) throws IOException {
         // DFS
         List<File> subdirs = getSubdirs(currentDir.getId());
         for (File subdir : subdirs) {   // Lambda doesn't work without a try/catch here
             consumer.accept(new AbstractMap.SimpleEntry<>(currentDir, subdir));
-            deepGetSubdirsRecursive(subdir, consumer);
+            if (maxDepth == -1 || currentDepth < maxDepth) {
+                deepGetSubdirsRecursive(subdir, consumer, maxDepth, currentDepth + 1);
+            }
         }
     }
 

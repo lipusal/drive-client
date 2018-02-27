@@ -49,4 +49,28 @@ public class Util {
         String mime = remote.getMimeType();
         return mime.equals(GOOGLE_DOC_MIME_TYPE) || mime.equals(GOOGLE_SLIDES_MIME_TYPE) || mime.equals(GOOGLE_SHEETS_MIME_TYPE);
     }
+
+    /**
+     * Tuple of arbitrary types.
+     *
+     * @param <A> Type of the first element of the tuple.
+     * @param <B> Type of the second element of the tuple.
+     */
+    public static class Tuple<A, B> {
+        private final A a;
+        private final B b;
+
+        Tuple(A a, B b) {
+            this.a = a;
+            this.b = b;
+        }
+
+        public A getA() {
+            return a;
+        }
+
+        public B getB() {
+            return b;
+        }
+    }
 }
