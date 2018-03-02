@@ -28,16 +28,7 @@ public class FileIgnorer {
         }
         this.rules = Arrays.stream(regexes).map(rule -> {
             StringBuilder regexBuilder = new StringBuilder();
-            // Match only under the specified base dir
-            regexBuilder.append("^").append(baseDir.toAbsolutePath().toString());
-            // Remove leading ^ if necessary
-            if (rule.startsWith("^")) {
-                rule = rule.replace("^", "");
-            }
-            if (!rule.startsWith("/")) {
-                // TODO: Make sure ignore rules use UNIX separator, rules starting with \\ for W4ndows separator will break
-                regexBuilder.append('/');
-            }
+            // Fix: Looks like `matches` implicitly wraps regexes with ^ and $, which we don't always want.
             if (!rule.startsWith(".*")) {
                 regexBuilder.append(".*");
             }
