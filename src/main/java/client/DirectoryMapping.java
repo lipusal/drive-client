@@ -19,6 +19,7 @@ public class DirectoryMapping {
     private final List<DirectoryMapping> subdirs = new ArrayList<>();
     private final Logger logger = LoggerFactory.getLogger(getClass());
     private boolean sync;
+    //TODO: Add a FileIgnorer for every mapping, which corresponds to the rules in the .ignore file of this directory. Will be null if there is no such file.
 
     /**
      * Whether <strong>ALL</strong> subdirectories (ie. transitive directories as well) have been fetched from
