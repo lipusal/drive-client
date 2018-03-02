@@ -357,7 +357,7 @@ public class Config {
 
     private void writeToFile() throws IOException {
         Writer configWriter = new FileWriter(CONFIG_FILE.toFile());
-        new Gson().toJson(configuration, configWriter);
+        new GsonBuilder().setPrettyPrinting().create().toJson(configuration, configWriter);
         configWriter.close();
     }
 

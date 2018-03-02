@@ -464,7 +464,7 @@ public class FilesystemMapper {
         buildMapJsonRecursive(rootMapping, result);
 
         Writer w = new FileWriter(mapFile.toFile());
-        new GsonBuilder().serializeNulls().create().toJson(result, w);
+        new GsonBuilder().serializeNulls().setPrettyPrinting().create().toJson(result, w);
         w.close();
     }
 
