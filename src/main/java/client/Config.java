@@ -3,7 +3,7 @@ package client;
 import client.discovery.DepthLimitedRemoteDiscoverer;
 import client.discovery.NaiveRemoteDiscoverer;
 import client.discovery.filtering.NoFilterStrategy;
-import client.discovery.mapping.AlwaysMapStrategy;
+import client.discovery.mapping.MapIfNotAlreadyMappedStrategy;
 import client.download.RemoteExplorer;
 import com.google.api.services.drive.Drive;
 import com.google.api.services.drive.model.File;
@@ -243,7 +243,7 @@ public class Config {
         new DepthLimitedRemoteDiscoverer(
                 drive,
                 globalMapper.getRootMapping(),
-                new AlwaysMapStrategy(),
+                new MapIfNotAlreadyMappedStrategy(),
                 (File remote, DirectoryMapping parent) -> syncedDirIds.contains(remote.getId()),
                 new NoFilterStrategy(),
                 0).discover();
