@@ -4,6 +4,7 @@ import client.discovery.DepthLimitedRemoteDiscoverer;
 import client.discovery.NaiveRemoteDiscoverer;
 import client.discovery.filtering.NoFilterStrategy;
 import client.discovery.mapping.MapIfNotAlreadyMappedStrategy;
+import client.discovery.sync.SyncIfNotIgnoredStrategy;
 import client.download.RemoteExplorer;
 import com.google.api.services.drive.Drive;
 import com.google.api.services.drive.model.File;
@@ -292,11 +293,7 @@ public class Config {
                 new NaiveRemoteDiscoverer(
                         drive,
                         syncedDir,
-                        (remoteSubdir, parent) -> {
-                            // Build local path, sync if not ignored
-                            // TODO: Also use parent's ignores
-                            return !globalIgnorer.isIgnored(Paths.get(parent.getLocalPath().toString(), remoteSubdir.getName()));
-                        }
+                        new SyncIfNotIgnoredStrategy()
                 ).setDirectoryConsumer(file -> {
                     DirectoryMapping mapping = Optional.ofNullable(globalMapper.getMapping(file.getId())).orElseThrow(() -> new IllegalStateException("Set to map if not already mapped but received a File with no mapping"));
                     mapping.setSubdirsUpToDate(true);   // Since we will eventually go all the way down the tree
