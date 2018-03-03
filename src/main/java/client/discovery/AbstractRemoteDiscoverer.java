@@ -70,12 +70,14 @@ public abstract class AbstractRemoteDiscoverer {
     }
 
     /**
-     * (Optional operation) Set a consumer to receive each discovered remote file.
+     * (Optional operation) Set a consumer to receive each discovered remote file. Note that, depending on the mapping
+     * strategy used, there might not be a mapping for the received {@code File}.
      *
      * @param consumer  Consumer
      */
-    public void setDirectoryConsumer(Consumer<File> consumer) {
+    public AbstractRemoteDiscoverer setDirectoryConsumer(Consumer<File> consumer) {
         this.consumer = consumer;
+        return this;
     }
 
     public FileIgnorer getGlobalIgnorer() {
