@@ -92,7 +92,7 @@ public class DepthLimitedRemoteDiscoverer extends AbstractRemoteDiscoverer {
         @Override
         public boolean isFiltered(DirectoryMapping subdir, DirectoryMapping parent) {
             int depth = Optional.ofNullable(depths.get(parent)).map(parentDepth -> parentDepth + 1).orElseThrow(() -> new IllegalArgumentException(parent + " has no registered depth mapping"));
-            return depth > maxDepth || secondFilterStrategy.isFiltered(subdir, parent);
+            return depth > maxDepth - 1 || secondFilterStrategy.isFiltered(subdir, parent);
         }
     }
 }

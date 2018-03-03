@@ -125,11 +125,7 @@ public abstract class AbstractRemoteDiscoverer {
     }
 
     /**
-     * Discover the remote filesystem with this instance's strategy.
-     * NOTES:
-     * - Subclasses MUST map any non-mapped directories that are encountered while discovering.
-     * - Subclasses MAY re-map already mapped directories.
-     * - Subclasses MUST call the consumer with every encountered directory, regardless of whether it's mapped or not.
+     * Discover the remote filesystem with the defined strategies.
      * TODO: Return a completable future so this can be done asynchronously?
      */
     public final void discover() throws IOException {

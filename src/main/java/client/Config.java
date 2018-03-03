@@ -247,7 +247,7 @@ public class Config {
                 new MapIfNotAlreadyMappedStrategy(),
                 (File remote, DirectoryMapping parent) -> syncedDirIds.contains(remote.getId()),
                 new NoFilterStrategy(),
-                0).discover();
+                1).discover();
 
         // Simpler alternative without a discoverer TODO decide which to keep, remove the unused parameter
 //        List<File> rootDirs = remoteExplorer.getSubdirs(getRemoteRoot());
