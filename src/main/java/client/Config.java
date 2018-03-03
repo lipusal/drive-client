@@ -1,6 +1,7 @@
 package client;
 
 import client.discovery.DepthLimitedRemoteDiscoverer;
+import client.discovery.NaiveRemoteDiscoverer;
 import client.discovery.filtering.NoFilterStrategy;
 import client.discovery.mapping.AlwaysMapStrategy;
 import client.download.RemoteExplorer;
@@ -176,7 +177,7 @@ public class Config {
         RemoteExplorer remoteExplorer = new RemoteExplorer(driveService);
         try {
             updateRootDirectories(remoteExplorer, driveService);
-            udpateSyncedDirectories(remoteExplorer);
+            updateSyncedDirectories(remoteExplorer, driveService);
         } catch (IOException e) {
             System.err.println("Couldn't get your Drive folders: " + e.getMessage() + ". Exiting.");
             logger.error("Couldn't crawl remote filesystem in configuration", e);
@@ -267,9 +268,10 @@ public class Config {
      * up to date (ie. calling {@link DirectoryMapping#areSubdirsUpToDate()} will return {@code true}).
      *
      * @param remoteExplorer    Remote explorer.
+     * @param drive             Drive service.
      * @throws IOException      On I/O errors when exploring.
      */
-    private void udpateSyncedDirectories(RemoteExplorer remoteExplorer) throws IOException {
+    private void updateSyncedDirectories(RemoteExplorer remoteExplorer, Drive drive) throws IOException {
         JsonArray syncedDirsRaw = configuration.getAsJsonArray("sync");
         for (String dirId : getSyncedDirIds()) {
             // Handle edge case
@@ -287,15 +289,16 @@ public class Config {
             DirectoryMapping syncedDir = globalMapper.getMapping(dirId);
             if (!syncedDir.areSubdirsUpToDate()) {
                 // Walk down directory tree, mapping any new directories we come across
-                remoteExplorer.deepGetSubdirs(syncedDir.getRemoteId(), fileFileSimpleEntry -> {
-                    File remoteSubdir = fileFileSimpleEntry.getValue();
-                    DirectoryMapping parentMapping = globalMapper.getMapping(fileFileSimpleEntry.getKey().getId()),
-                            mapping = globalMapper.getMapping(remoteSubdir.getId());
-                    if (mapping == null) {
-                        // Unmapped directory, map (set synced to true)
-                        mapping = new DirectoryMapping(remoteSubdir.getId(), Paths.get(parentMapping.getLocalPath().toString(), remoteSubdir.getName()), true);
-                        globalMapper.mapSubdir(mapping, parentMapping);
-                    }
+                new NaiveRemoteDiscoverer(
+                        drive,
+                        syncedDir,
+                        (remoteSubdir, parent) -> {
+                            // Build local path, sync if not ignored
+                            // TODO: Also use parent's ignores
+                            return !globalIgnorer.isIgnored(Paths.get(parent.getLocalPath().toString(), remoteSubdir.getName()));
+                        }
+                ).setDirectoryConsumer(file -> {
+                    DirectoryMapping mapping = Optional.ofNullable(globalMapper.getMapping(file.getId())).orElseThrow(() -> new IllegalStateException("Set to map if not already mapped but received a File with no mapping"));
                     mapping.setSubdirsUpToDate(true);   // Since we will eventually go all the way down the tree
                     // Add or remove subdirs from synced list as necessary
                     JsonElement elementJson = new JsonPrimitive(mapping.getRemoteId());
@@ -306,7 +309,29 @@ public class Config {
                     } else {
                         syncedDirsRaw.remove(elementJson); // Idempotent, no need to check if contains
                     }
-                });
+                }).discover();
+
+                // Simpler alternative without a discoverer TODO decide which to keep, remove the unused parameter
+//                remoteExplorer.deepGetSubdirs(syncedDir.getRemoteId(), fileFileSimpleEntry -> {
+//                    File remoteSubdir = fileFileSimpleEntry.getValue();
+//                    DirectoryMapping parentMapping = globalMapper.getMapping(fileFileSimpleEntry.getKey().getId()),
+//                            mapping = globalMapper.getMapping(remoteSubdir.getId());
+//                    if (mapping == null) {
+//                        // Unmapped directory, map (set synced to true)
+//                        mapping = new DirectoryMapping(remoteSubdir.getId(), Paths.get(parentMapping.getLocalPath().toString(), remoteSubdir.getName()), true);
+//                        globalMapper.mapSubdir(mapping, parentMapping);
+//                    }
+//                    mapping.setSubdirsUpToDate(true);   // Since we will eventually go all the way down the tree
+//                    // Add or remove subdirs from synced list as necessary
+//                    JsonElement elementJson = new JsonPrimitive(mapping.getRemoteId());
+//                    if (mapping.isSynced()) {
+//                        if (!syncedDirsRaw.contains(elementJson)) {
+//                            syncedDirsRaw.add(elementJson);
+//                        }
+//                    } else {
+//                        syncedDirsRaw.remove(elementJson); // Idempotent, no need to check if contains
+//                    }
+//                });
                 syncedDir.setSubdirsUpToDate(true);
             }
         }
