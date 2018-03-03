@@ -208,10 +208,25 @@ public class Config {
                             DirectoryMapping matchedDir = chooser.mappingFromInput(entry);
                             boolean isSynced = !matchedDir.isSynced();
                             if (isSynced && !matchedDir.areSubdirsUpToDate()) {
-                                System.out.println("Getting all subdirectories of " + matchedDir.getName() + "...");
+                                int maxDepth = 2;
+                                System.out.println("Getting subdirectories of " + matchedDir.getName() + "...");
+                                logger.debug("Getting subdirectories of {} up to {} in depth", matchedDir.getName(), maxDepth);
                                 // TODO NOW decide whether to use regexes or blobs
-                                globalMapper.discover(matchedDir, isSynced, globalIgnorer, 2, null);
-                                matchedDir.setSync(isSynced);
+                                new DepthLimitedRemoteDiscoverer(
+                                        driveService,
+                                        matchedDir,
+                                        new SyncIfNotIgnoredStrategy(),
+                                        maxDepth
+                                ).setDirectoryConsumer(file -> {
+                                    // The sync strategy is only applied to new mappings (and using an AlwaysMapStrategy
+                                    // currently causes an exception, try it and you will see why), so we forcefully set
+                                    // the sync flag of all directories here. This will also cover already-mapped dirs.
+                                    DirectoryMapping mapping = Optional.ofNullable(globalMapper.getMapping(file.getId())).orElseThrow(() -> new IllegalStateException("Set to map but received a file with no mapping"));
+                                    mapping.setSync(!globalIgnorer.isIgnored(mapping.getLocalPath()));
+                                }).discover();
+
+//                                globalMapper.discover(matchedDir, isSynced, globalIgnorer, 2, null);
+                                matchedDir.setSync(true);
                             } else {
                                 deepSetSynced(matchedDir, isSynced);
                             }
