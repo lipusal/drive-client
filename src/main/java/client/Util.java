@@ -60,7 +60,7 @@ public class Util {
         private final A a;
         private final B b;
 
-        Tuple(A a, B b) {
+        public Tuple(A a, B b) {
             this.a = a;
             this.b = b;
         }
