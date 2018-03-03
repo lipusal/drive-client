@@ -1,5 +1,8 @@
 package client;
 
+import client.discovery.DepthLimitedRemoteDiscoverer;
+import client.discovery.filtering.NoFilterStrategy;
+import client.discovery.mapping.AlwaysMapStrategy;
 import client.download.RemoteExplorer;
 import com.google.api.services.drive.Drive;
 import com.google.api.services.drive.model.File;
@@ -172,7 +175,7 @@ public class Config {
 
         RemoteExplorer remoteExplorer = new RemoteExplorer(driveService);
         try {
-            updateRootDirectories(remoteExplorer);
+            updateRootDirectories(remoteExplorer, driveService);
             udpateSyncedDirectories(remoteExplorer);
         } catch (IOException e) {
             System.err.println("Couldn't get your Drive folders: " + e.getMessage() + ". Exiting.");
@@ -233,20 +236,29 @@ public class Config {
      * @param remoteExplorer    Remote explorer to get root directories with.
      * @throws IOException      On I/O errors when fetching root dirs.
      */
-    private void updateRootDirectories(RemoteExplorer remoteExplorer) throws IOException {
+    private void updateRootDirectories(RemoteExplorer remoteExplorer, Drive drive) throws IOException {
         // Fetch latest info about root directories
-        List<File> rootDirs = remoteExplorer.getSubdirs(getRemoteRoot());
+        List<String> syncedDirIds = getSyncedDirIds();
+        new DepthLimitedRemoteDiscoverer(
+                drive,
+                globalMapper.getRootMapping(),
+                new AlwaysMapStrategy(),
+                (File remote, DirectoryMapping parent) -> syncedDirIds.contains(remote.getId()),
+                new NoFilterStrategy(),
+                0).discover();
+
+        // Simpler alternative without a discoverer TODO decide which to keep, remove the unused parameter
+//        List<File> rootDirs = remoteExplorer.getSubdirs(getRemoteRoot());
 
         // Map any new root directories that were not previously mapped
-        List<String> syncedDirIds = getSyncedDirIds();
-        rootDirs.forEach(rootDir -> {
-            String remoteId = rootDir.getId();
-            if (!globalMapper.isMapped(remoteId)) {
-                Path localPath = Paths.get(getLocalRoot().toString(), rootDir.getName());
-                boolean synced = syncedDirIds.contains(remoteId);
-                globalMapper.mapSubdir(localPath, remoteId, synced, globalMapper.getRootMapping());
-            }
-        });
+//        rootDirs.forEach(rootDir -> {
+//            String remoteId = rootDir.getId();
+//            if (!globalMapper.isMapped(remoteId)) {
+//                Path localPath = Paths.get(getLocalRoot().toString(), rootDir.getName());
+//                boolean synced = syncedDirIds.contains(remoteId);
+//                globalMapper.mapSubdir(localPath, remoteId, synced, globalMapper.getRootMapping());
+//            }
+//        });
     }
 
     /**
