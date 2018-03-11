@@ -104,6 +104,14 @@ public class Config {
         // 3) Instance global file ignorer, which is relative to global root (defined in global mapper)
         globalIgnorer = new FileIgnorer(globalMapper.getLocalRoot(), getGlobalIgnoreRules());
 
+        // TODO NOW leave?
+        try {
+            globalMapper.crawlRemoteDirs();
+        } catch (IOException e) {
+            e.printStackTrace();
+            System.exit(1);
+        }
+
         // 4) Set which remote directories to sync
         setSyncedRemoteDirs(driveService);
 

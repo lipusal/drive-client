@@ -64,14 +64,14 @@ public class FilesystemMapper {
      * Crawl all of the remote directories to build a representation of the remote structure locally.
      */
     public void crawlRemoteDirs() throws IOException {
-        // TODO: Use remoteExplorer#deepGetSubdirs
-        List<File> remoteDirs = new LinkedList<>();
-
         String pageToken = null;
         logger.debug("Crawling remote folders...");
 
-        remoteDirs = loadCrawlResults();
-        if (remoteDirs == null) {
+        List<File> remoteDirs = Optional.ofNullable(loadCrawlResults()).orElse(new LinkedList<>());
+        Map<String, List<File>> hierarchy;
+        int total = 0;
+        if (remoteDirs.isEmpty()) {
+            hierarchy = new HashMap<>();
             do {
                 FileList result = driveService.files().list()
                         .setQ("mimeType='application/vnd.google-apps.folder'")
@@ -82,34 +82,81 @@ public class FilesystemMapper {
                         .execute();
                 remoteDirs.addAll(result.getFiles());
                 pageToken = result.getNextPageToken();
-                logger.debug("Fetched {} folders, continuing with next page", result.getFiles().size());
+                total += result.getFiles().size();
+                logger.debug("Fetched {} new folders ({} so far), continuing with next page", result.getFiles().size(), total);
+                // Add to hierarchy (merge)
+                buildHierarchy(result.getFiles()).forEach((parent, children) -> {
+                    if (!hierarchy.containsKey(parent)) {
+                        hierarchy.put(parent, children);
+                    } else {
+                        hierarchy.get(parent).addAll(children);
+                    }
+                });
             } while (pageToken != null);
+            // Done, write all remote folders to file to save time next debugging
+            logger.debug("Saving {} directories", remoteDirs.size());
+            saveCrawlResult(remoteDirs);
+            logger.debug("Saved");
         } else {
-            logger.debug("Loaded crawl results from file");
+            logger.debug("Loaded {} directories from file, building entire hierarchy", remoteDirs.size());
+            hierarchy = buildHierarchy(remoteDirs);
         }
 
-        logger.debug("Crawl complete, replicating directory structure of {} directories", remoteDirs.size());
+        logger.debug("Replicating structure of {} directories", remoteDirs.size());
 
-//        saveCrawlResult(remoteDirs);
-
-        Deque<DirectoryMapping> parentsToSee = new LinkedList<>();
-        parentsToSee.addFirst(getRootMapping());    // Start at root
-        while (!remoteDirs.isEmpty()) {
-            // Pop next dir
-            DirectoryMapping currentParent = parentsToSee.pop();
-            // Get its subdirs
-            List<File> remoteSubdirs = remoteDirs.stream().filter(file -> file.getParents() != null && file.getParents().contains(currentParent.getRemoteId())).collect(Collectors.toList());
-            remoteSubdirs.forEach(subdir -> {
-                // Map it
-                mapSubdir(Paths.get(currentParent.getLocalPath().toString(), subdir.getName()), subdir.getId(), false, currentParent);
-                // Push newly created mapping as parent to process
-                parentsToSee.push(getMapping(subdir.getId()));
+        // Use hierarchy to replicate remote filesystem
+        Deque<String> pendingDirs = new LinkedList<>();
+        // Start at root
+        if (!isMapped(getRemoteRoot())) {
+            throw new IllegalStateException("Attempted to clone remote structure but remote root is not mapped. It needs to be mapped in order to create submappings of it");
+        }
+        pendingDirs.add(getRemoteRoot());
+        int processedDirs = 0;
+        while (!pendingDirs.isEmpty()) {
+            String parent = pendingDirs.pop();
+            DirectoryMapping parentMapping = getMapping(parent);
+            if (parentMapping == null) {
+                throw new IllegalStateException("Reached a directory that hasn't been mapped while replicating remote filesystem");
+            }
+            // Map all subdirs
+            Optional.ofNullable(hierarchy.get(parent)).orElse(Collections.emptyList()).forEach(subdir -> {
+                if (!isMapped(subdir.getId())) {
+                    mapSubdir(subdir.getId(), Paths.get(parentMapping.getLocalPath().toString(), subdir.getName()), false, parentMapping);
+                }
+                pendingDirs.push(subdir.getId());
             });
-            // TODO make the following line faster
-            remoteSubdirs.forEach(remoteDirs::remove);
-            //remoteDirs.removeAll(remoteSubdirs);    // Much slower, see https://coderanch.com/t/203041/java/Big-performance-hog-Collection-removeAll and https://stackoverflow.com/questions/28671903/hashset-removeall-method-is-surprisingly-slow
+            processedDirs++;
         }
+        logger.debug("Replicated structure of {} files ({} fetched from remote, they should be the same number)", processedDirs, remoteDirs.size());
         writeToFile();
+        // TODO NOW:
+        // 1) Don't take so long to read crawl result file. This can be done by:
+        //   1.1) Not mapping ignored subfolders
+        //   1.2) Excluding ignored directories from crawl result file
+        //  2) Don't fetch remote folders when choosing which folders to sync; use local mappings, we already have everything mapped!
+    }
+
+    /**
+     * Convert a list of remote files to a map of parent ID -> subfiles.
+     *
+     * @param remoteFiles The remote files.
+     * @return The corresponding hierarchy map.
+     */
+    private Map<String, List<File>> buildHierarchy(List<File> remoteFiles) {
+        Map<String, List<File>> result = new HashMap<>(remoteFiles.size());
+        remoteFiles.forEach(file -> {
+            if (file.getParents() == null) {
+                logger.warn("{} has null parents, skipping", file);
+            } else {
+                file.getParents().forEach(parent -> {
+                    if (!result.containsKey(parent)) {
+                        result.put(parent, new LinkedList<>());
+                    }
+                    result.get(parent).add(file);
+                });
+            }
+        });
+        return result;
     }
 
     public DirectoryMapping getRootMapping() {
@@ -621,23 +668,18 @@ public class FilesystemMapper {
      * @throws IOException
      */
     private void saveCrawlResult(List<File> remoteDirs) throws IOException {
-        try (FileWriter writer = new FileWriter("remotes.json")) {
-            JsonObject json = new JsonObject();
-            remoteDirs.forEach(dir -> {
-                JsonObject dirJson = new JsonObject();
-
-                List<String> parents = Optional.ofNullable(dir.getParents()).orElse(Collections.emptyList());
-                JsonArray parentsJson = new JsonArray(parents.size());
-                parents.forEach(parentsJson::add);
-                dirJson.add("parents", parentsJson);
-
-                dirJson.add("id", new JsonPrimitive(dir.getId()));
-                dirJson.add("name", new JsonPrimitive(dir.getName()));
-
-                json.add(dir.getId(), dirJson);
-            });
-            Gson g = new Gson();
-            g.toJson(json, writer);
+        JsonArray data = new JsonArray();
+        remoteDirs.forEach(file -> {
+            JsonObject entry = new JsonObject();
+            entry.add("id", new JsonPrimitive(file.getId()));
+            entry.add("name", new JsonPrimitive(file.getName()));
+            JsonArray parents = new JsonArray();
+            Optional.ofNullable(file.getParents()).orElse(Collections.emptyList()).forEach(parents::add);
+            entry.add("parents", parents);
+            data.add(entry);
+        });
+        try (FileWriter w = new FileWriter("remoteDirs.json")) {
+            new GsonBuilder().setPrettyPrinting().create().toJson(data, w);
         }
     }
 
@@ -648,22 +690,20 @@ public class FilesystemMapper {
      * @throws IOException
      */
     private List<File> loadCrawlResults() throws IOException {
-        try (FileReader reader = new FileReader("remotes.json")) {
+        try (FileReader reader = new FileReader("remoteDirs.json")) {
             Gson g = new Gson();
-            JsonObject json = g.fromJson(reader, JsonObject.class);
+            JsonArray json = g.fromJson(reader, JsonArray.class);
 
-            return json.entrySet().stream().map(entry -> {
+            List<File> result = new LinkedList<>();
+            json.forEach(entry -> {
+                JsonObject entryObject = entry.getAsJsonObject();
                 File dir = new File();
-                dir.setId(entry.getKey());
-
-                JsonObject dirJson = entry.getValue().getAsJsonObject();
-
-                dir.setParents(Util.streamFromIterator(dirJson.getAsJsonArray("parents").iterator()).map(JsonElement::getAsString).collect(Collectors.toList()));
-                dir.setId(dirJson.get("id").getAsString());
-                dir.setName(dirJson.get("name").getAsString());
-                return dir;
-            }).collect(Collectors.toList());
-
+                dir.setId(entryObject.get("id").getAsString());
+                dir.setParents(Util.streamFromIterator(entryObject.getAsJsonArray("parents").iterator()).map(JsonElement::getAsString).collect(Collectors.toList()));
+                dir.setName(entryObject.get("name").getAsString());
+                result.add(dir);
+            });
+            return result;
         } catch (FileNotFoundException e) {
             return null;
         }
