@@ -105,10 +105,12 @@ public class Config {
         globalIgnorer = new FileIgnorer(globalMapper.getLocalRoot(), getGlobalIgnoreRules());
 
         // 4) Crawl entire remote if necessary
+        boolean crawled = false;
         if (configuration.get("crawl").getAsBoolean()) {
             try {
                 globalMapper.crawlRemoteDirs();
                 configuration.add("crawl", new JsonPrimitive(false));
+                crawled = true;
             } catch (IOException e) {
                 System.err.println("Error crawling remote filesystem (crawl occurs during first run or when configured to do so). Aborting.");
                 logger.error("Error crawling remote: {}", e);
@@ -117,7 +119,7 @@ public class Config {
         }
 
         // 5) Set which remote directories to sync
-        setSyncedRemoteDirs(driveService);
+        setSyncedRemoteDirs(driveService, !crawled);
 
         // 6) Save config
         try {
@@ -183,18 +185,21 @@ public class Config {
      * and update configuration.
      *
      * @param driveService  The Drive service to fetch remote directories with.
+     * @param updateFirst   Whether root and synced directories should be updated (ie. fetched from remote) prior to selection.
      */
-    private void setSyncedRemoteDirs(Drive driveService) {
+    private void setSyncedRemoteDirs(Drive driveService, boolean updateFirst) {
         System.out.println("Loading your Drive folders...");
 
         RemoteExplorer remoteExplorer = new RemoteExplorer(driveService);
-        try {
-            updateRootDirectories(remoteExplorer, driveService);
-            updateSyncedDirectories(remoteExplorer, driveService);
-        } catch (IOException e) {
-            System.err.println("Couldn't get your Drive folders: " + e.getMessage() + ". Exiting.");
-            logger.error("Couldn't crawl remote filesystem in configuration", e);
-            System.exit(1);
+        if (updateFirst) {
+            try {
+                updateRootDirectories(remoteExplorer, driveService);
+                updateSyncedDirectories(remoteExplorer, driveService);
+            } catch (IOException e) {
+                System.err.println("Couldn't get your Drive folders: " + e.getMessage() + ". Exiting.");
+                logger.error("Couldn't crawl remote filesystem in configuration", e);
+                System.exit(1);
+            }
         }
 
         boolean done = false;
@@ -219,7 +224,8 @@ public class Config {
                         try {
                             DirectoryMapping matchedDir = chooser.mappingFromInput(entry);
                             boolean isSynced = !matchedDir.isSynced();
-                            if (isSynced && !matchedDir.areSubdirsUpToDate()) {
+                            //noinspection ConstantConditions,ConstantIfStatement FOR NOW assume all directories up to date (ie. no need to discover remote)
+                            if (false /*isSynced && !matchedDir.areSubdirsUpToDate()*/) {
                                 int maxDepth = 2;
                                 System.out.println("Getting subdirectories of " + matchedDir.getName() + "...");
                                 logger.debug("Getting subdirectories of {} up to {} in depth", matchedDir.getName(), maxDepth);
