@@ -118,16 +118,21 @@ public class FilesystemMapper {
             if (parentMapping == null) {
                 throw new IllegalStateException("Reached a directory that hasn't been mapped while replicating remote filesystem");
             }
-            // Map all subdirs
+            // Map all non-ignored subdirs
             Optional.ofNullable(hierarchy.get(parent)).orElse(Collections.emptyList()).forEach(subdir -> {
-                if (!isMapped(subdir.getId())) {
-                    mapSubdir(subdir.getId(), Paths.get(parentMapping.getLocalPath().toString(), subdir.getName()), false, parentMapping);
+                Path localPath = Paths.get(parentMapping.getLocalPath().toString(), subdir.getName());
+                if (!Config.getInstance().getGlobalIgnorer().isIgnored(localPath)) {
+                    if (!isMapped(subdir.getId())) {
+                        mapSubdir(subdir.getId(), localPath, false, parentMapping);
+                    }
+                    pendingDirs.push(subdir.getId());
+                } else {
+                    logger.debug("Not mapping ignored folder {} <=> {}", localPath, subdir.getId());
                 }
-                pendingDirs.push(subdir.getId());
             });
             processedDirs++;
         }
-        logger.debug("Replicated structure of {} files ({} fetched from remote, they should be the same number)", processedDirs, remoteDirs.size());
+        logger.debug("Mapped {} directories out of the {} fetched from remote", processedDirs, remoteDirs.size());
         writeToFile();
         // TODO NOW:
         // 1) Don't take so long to read crawl result file. This can be done by:
