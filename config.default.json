@@ -3,6 +3,7 @@
   "localRoot": null,
   "remoteRoot": null,
   "sync": [],
+  "crawl": true,
   "ignore": [
     "\\.git(/.*)?",
     "node_modules"

@@ -104,18 +104,22 @@ public class Config {
         // 3) Instance global file ignorer, which is relative to global root (defined in global mapper)
         globalIgnorer = new FileIgnorer(globalMapper.getLocalRoot(), getGlobalIgnoreRules());
 
-        // TODO NOW leave?
-        try {
-            globalMapper.crawlRemoteDirs();
-        } catch (IOException e) {
-            e.printStackTrace();
-            System.exit(1);
+        // 4) Crawl entire remote if necessary
+        if (configuration.get("crawl").getAsBoolean()) {
+            try {
+                globalMapper.crawlRemoteDirs();
+                configuration.add("crawl", new JsonPrimitive(false));
+            } catch (IOException e) {
+                System.err.println("Error crawling remote filesystem (crawl occurs during first run or when configured to do so). Aborting.");
+                logger.error("Error crawling remote: {}", e);
+                System.exit(1);
+            }
         }
 
-        // 4) Set which remote directories to sync
+        // 5) Set which remote directories to sync
         setSyncedRemoteDirs(driveService);
 
-        // 5) Save config
+        // 6) Save config
         try {
             logger.debug("Saving updated config to {}", CONFIG_FILE);
             writeToFile();
@@ -125,7 +129,7 @@ public class Config {
             System.exit(1);
         }
 
-        // 6) Persist map changes because we probably made at least some new mappings
+        // 7) Persist map changes because we probably made at least some new mappings
         try {
             globalMapper.writeToFile();
         } catch (IOException e) {
