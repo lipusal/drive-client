@@ -134,11 +134,6 @@ public class FilesystemMapper {
         }
         logger.debug("Mapped {} directories out of the {} fetched from remote", processedDirs, remoteDirs.size());
         writeToFile();
-        // TODO NOW:
-        // 1) Don't take so long to read crawl result file. This can be done by:
-        //   1.1) Not mapping ignored subfolders
-        //   1.2) Excluding ignored directories from crawl result file
-        //  2) Don't fetch remote folders when choosing which folders to sync; use local mappings, we already have everything mapped!
     }
 
     /**
