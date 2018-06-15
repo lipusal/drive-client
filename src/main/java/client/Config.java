@@ -34,6 +34,8 @@ public class Config {
     private FilesystemMapper globalMapper;
     private FileIgnorer globalIgnorer;
     private Logger logger = LoggerFactory.getLogger(getClass());
+    private boolean globalsSet = false;
+    private boolean crawled = false;
 
     public static Config getInstance() {
         if (instance == null) {
@@ -59,6 +61,61 @@ public class Config {
         } catch (IOException e) {
             logger.warn("Abnormal error loading config file {}, using default config", CONFIG_FILE, e);
         }
+    }
+
+    /**
+     * Set the app to an initial state necessary to work properly. Tasks include:
+     * - Setting the global filesystem mapper
+     * - Setting the global file ignorer
+     * - Crawling entire remote if necessary, so folders are up to date
+     * <b>NOTE:</b> The only other class that should call this is {@link main.Main Main}.
+     *
+     * @param driveService Google Drive service.
+     * @param saveChanges  Whether to save configuration changes if they are produced.
+     * @throws IllegalStateException If local and/or remote roots are not set (happens when not configured, call
+     * {@link #configure(Drive)} first).
+     * @throws IllegalStateException If globals have already been set.
+     */
+    public void setGlobals(Drive driveService, boolean saveChanges) {
+        if (getLocalRoot() == null || getRemoteRoot() == null) {
+            throw new IllegalStateException("Local and/or remote roots not set, can't set globals without them");
+        } else if (globalsSet) {
+            throw new IllegalStateException("Globals already set, can't re-set");
+        }
+        // Instance global filesystem mapper to manage remote FS
+        try {
+            globalMapper = new FilesystemMapper(getMapFilePath(), driveService);
+        } catch (Exception e) {
+            System.err.println("Couldn't complete configuration (internal error, this is not your fault). Aborting.");
+            logger.error("Couldn't instance global filesystem mapper", e);
+            System.exit(1);
+        }
+        // Instance global file ignorer, which is relative to global root (defined in global mapper)
+        globalIgnorer = new FileIgnorer(globalMapper.getLocalRoot(), getGlobalIgnoreRules());
+        // Crawl entire remote if necessary
+        if (configuration.get("crawl").getAsBoolean()) {
+            try {
+                globalMapper.crawlRemoteDirs();
+                configuration.add("crawl", new JsonPrimitive(false));
+                crawled = true;
+            } catch (IOException e) {
+                System.err.println("Error crawling remote filesystem (crawl occurs during first run or when configured to do so). Aborting.");
+                logger.error("Error crawling remote: {}", e);
+                System.exit(1);
+            }
+            // Save changes (intentionally in a different try-catch)
+            if (saveChanges) {
+                try {
+                    writeToFile();
+                    globalMapper.writeToFile();
+                } catch (IOException e) {
+                    System.err.println("Couldn't start app, exiting.");
+                    logger.error("Couldn't save config or map after crawling remote:", e);
+                    System.exit(1);
+                }
+            }
+        }
+        globalsSet = true;
     }
 
     /**
@@ -88,40 +145,15 @@ public class Config {
         /* ************************
          *        CONFIGURE
          * ***********************/
-        // 1) Set local root
+        // Set local root
         setLocalRoot();
 
-        // 2) Instance global filesystem mapper to manage remote FS
-        if (globalMapper == null) {
-            try {
-                globalMapper = new FilesystemMapper(getMapFilePath(), driveService);
-            } catch (Exception e) {
-                System.err.println("Couldn't complete configuration (internal error, this is not your fault). Aborting.");
-                logger.error("Couldn't instance global filesystem mapper", e);
-                System.exit(1);
-            }
-        }
-        // 3) Instance global file ignorer, which is relative to global root (defined in global mapper)
-        globalIgnorer = new FileIgnorer(globalMapper.getLocalRoot(), getGlobalIgnoreRules());
+        setGlobals(driveService, false);
 
-        // 4) Crawl entire remote if necessary
-        boolean crawled = false;
-        if (configuration.get("crawl").getAsBoolean()) {
-            try {
-                globalMapper.crawlRemoteDirs();
-                configuration.add("crawl", new JsonPrimitive(false));
-                crawled = true;
-            } catch (IOException e) {
-                System.err.println("Error crawling remote filesystem (crawl occurs during first run or when configured to do so). Aborting.");
-                logger.error("Error crawling remote: {}", e);
-                System.exit(1);
-            }
-        }
-
-        // 5) Set which remote directories to sync
+        // Set which remote directories to sync
         setSyncedRemoteDirs(driveService, !crawled);
 
-        // 6) Save config
+        // Save config
         try {
             logger.debug("Saving updated config to {}", CONFIG_FILE);
             writeToFile();
@@ -131,7 +163,7 @@ public class Config {
             System.exit(1);
         }
 
-        // 7) Persist map changes because we probably made at least some new mappings
+        // Persist map changes because we probably made at least some new mappings
         try {
             globalMapper.writeToFile();
         } catch (IOException e) {

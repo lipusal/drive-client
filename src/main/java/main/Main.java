@@ -135,6 +135,7 @@ public class Main {
 
         // Build a new authorized API client service.
         Drive driveService = getDriveService();
+        // Set up app with the built Drive service - Main should be the first and only to call this
 
         boolean runConfig;
         if (!Config.getInstance().isConfigured()) {
@@ -156,20 +157,15 @@ public class Main {
             Config.getInstance().configure(driveService);
         } else {
             System.out.println("Skipping configuration");
+            // Set up app properly even when config is not run
+            Config.getInstance().setGlobals(driveService, true);
         }
 
         /* *********************************************************************************************************
          *                                  SYNC LOCAL AND REMOTE FILE FILESYSTEMS
          * ********************************************************************************************************/
         // Mappings of local folders <=> remote folders
-        FilesystemMapper globalMapper;
-        if (!runConfig) {
-            // If configuration is not run, global mapper is not instanced.
-            globalMapper = new FilesystemMapper(Config.getInstance().getMapFilePath(), driveService);
-            Config.getInstance().setGlobalMapper(globalMapper);
-        } else {
-            globalMapper = Config.getInstance().getGlobalMapper();
-        }
+        FilesystemMapper globalMapper = Config.getInstance().getGlobalMapper();
         // Sync content
         System.out.println("Syncing...");
         logger.debug("Beginning sync");

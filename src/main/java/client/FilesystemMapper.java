@@ -57,6 +57,7 @@ public class FilesystemMapper {
             this.localRoot = this.rootMapping.getLocalPath();
             this.remoteRoot = this.rootMapping.getRemoteId();
             this.mappingMap = buildMappingMap(this.rootMapping);
+            logger.debug("Loaded {} mappings", mappingMap.size());
         }
     }
 
@@ -449,6 +450,7 @@ public class FilesystemMapper {
      * @param map           The map from which to read subdirectories.
      */
     private void parseDirectoryRecursive(DirectoryMapping currentRoot, JsonObject map) {
+        // TODO: Instead of this, try to use the same strategy used in `buildHierarchy` to do everything in 1 pass rather than in N
         List<String> entriesToRemove = new ArrayList<>();
         // Find subdirs of current dir
         map.entrySet().stream().filter(entry -> {
