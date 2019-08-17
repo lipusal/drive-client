@@ -121,7 +121,7 @@ public class FilesystemMapper {
             }
             // Map all non-ignored subdirs
             Optional.ofNullable(hierarchy.get(parent)).orElse(Collections.emptyList()).forEach(subdir -> {
-                Path localPath = Paths.get(parentMapping.getLocalPath().toString(), subdir.getName());
+                Path localPath = Paths.get(parentMapping.getLocalPath().toString(), Util.sanitizeFilename(subdir.getName()));
                 if (!Config.getInstance().getGlobalIgnorer().isIgnored(localPath)) {
                     if (!isMapped(subdir.getId())) {
                         mapSubdir(subdir.getId(), localPath, false, parentMapping);
@@ -419,7 +419,7 @@ public class FilesystemMapper {
         if (mapFile.equals(DEFAULT_MAP_FILE)) {
             throw new IllegalArgumentException("Provided map file is default map file. Call #getRootMappingFromConfig() to parse that file.");
         }
-        JsonObject map = new Gson().fromJson(new FileReader(mapFile.toFile()), JsonObject.class);
+        JsonObject map = new Gson().fromJson(Util.utf8FileReader(mapFile), JsonObject.class);
         // Set remote root
         if (!map.has("root") || !map.get("root").isJsonPrimitive()) {
             throw new Exception("Map in " + mapFile + " does not include a valid root directory ID");
@@ -523,7 +523,7 @@ public class FilesystemMapper {
         result.add(getRemoteRoot(), mapEntry("root", getLocalRoot(), true));
         buildMapJsonRecursive(rootMapping, result);
 
-        Writer w = new FileWriter(mapFile.toFile());
+        Writer w = Util.utf8FileWriter(mapFile);
         new GsonBuilder().serializeNulls().setPrettyPrinting().create().toJson(result, w);
         w.close();
     }

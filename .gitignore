@@ -10,5 +10,6 @@ logging.properties
 config.json
 map.json
 map.example.json
+remoteDirs.json
 
 TEST-ROOT

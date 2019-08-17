@@ -46,7 +46,7 @@ public class Config {
 
     private Config() {
         // Load default config, can't fail
-        try (Reader configReader = new FileReader(DEFAULT_CONFIG_FILE.toFile())) {
+        try (Reader configReader = Util.utf8FileReader(DEFAULT_CONFIG_FILE)) {
             this.configuration = new Gson().fromJson(configReader, JsonObject.class);
         } catch (Exception e) {
             logger.error("Couldn't load default configuration file {}: ", DEFAULT_CONFIG_FILE.toString(), e);
